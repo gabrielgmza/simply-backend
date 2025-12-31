@@ -5,10 +5,7 @@ const prisma = new PrismaClient();
 export const userService = {
   async getById(id: string) {
     const user = await prisma.users.findUnique({
-      where: { id },
-      include: {
-        // Agregar relaciones cuando existan
-      }
+      where: { id }
     });
 
     if (!user) {
@@ -22,9 +19,7 @@ export const userService = {
     const user = await prisma.users.update({
       where: { id },
       data: {
-        kyc_status: status,
-        kyc_verified_at: status === 'approved' ? new Date() : null,
-        kyc_verified_by: status === 'approved' ? verifiedBy : null
+        kyc_status: status
       }
     });
 
@@ -33,7 +28,7 @@ export const userService = {
 
   async getActivity(userId: string, limit: number = 20) {
     // Simulación de actividad - en producción vendría de múltiples tablas
-    const activity = [];
+    const activity: any[] = [];
     
     // Por ahora devolvemos vacío, se puede expandir después
     return activity;
@@ -43,7 +38,7 @@ export const userService = {
     const user = await prisma.users.update({
       where: { id },
       data: {
-        status,
+        user_status: status,
         updated_at: new Date()
       }
     });

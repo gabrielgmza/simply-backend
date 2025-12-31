@@ -55,7 +55,7 @@ export const exportService = {
     const rows = users.map(u => [
       u.id,
       u.email,
-      u.telefono || '',
+      u.phone || '',
       u.kyc_status || 'pending',
       u.created_at.toISOString()
     ]);

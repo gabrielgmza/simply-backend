@@ -138,7 +138,13 @@ export const dashboardService = {
       })
     ]);
 
-    const activity = [];
+    const activity: Array<{
+      type: string;
+      description: string;
+      timestamp: Date;
+      id: string;
+      creator?: string;
+    }> = [];
 
     recentUsers.forEach(u => {
       activity.push({
@@ -174,6 +180,7 @@ export const dashboardService = {
   },
 
   async getTopPerformers() {
+    // Obtener empleados con sus tickets
     const employees = await prisma.employees.findMany({
       where: { status: 'ACTIVE' },
       select: {
@@ -182,30 +189,31 @@ export const dashboardService = {
         last_name: true,
         email: true,
         role: true,
-        _count: {
-          select: {
-            assigned_tickets: true,
-            created_tickets: true
-          }
-        }
-      },
-      orderBy: {
         assigned_tickets: {
-          _count: 'desc'
+          select: { id: true }
+        },
+        tickets: {
+          select: { id: true }
         }
       },
-      take: 5
+      take: 10
     });
 
-    return employees.map(e => ({
+    // Mapear y ordenar manualmente
+    const performersWithCount = employees.map(e => ({
       id: e.id,
       name: `${e.first_name} ${e.last_name}`,
       email: e.email,
       role: e.role,
-      ticketsAssigned: e._count.assigned_tickets,
-      ticketsCreated: e._count.created_tickets,
-      total: e._count.assigned_tickets + e._count.created_tickets
+      ticketsAssigned: e.assigned_tickets.length,
+      ticketsCreated: e.tickets.length,
+      total: e.assigned_tickets.length + e.tickets.length
     }));
+
+    // Ordenar por total descendente y tomar top 5
+    return performersWithCount
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
   },
 
   async getLeadConversion() {
