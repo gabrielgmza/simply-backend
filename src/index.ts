@@ -2,12 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { PrismaClient } from '@prisma/client';
+import { authMiddleware, requirePermission, AuthRequest } from './middleware/auth';
+import { authService } from './services/authService';
+import { employeeService } from './services/employeeService';
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 8080;
 
-// Middleware
+// Middleware global
 app.use(helmet());
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
@@ -19,7 +22,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
+// ==========================================
+// HEALTH CHECK
+// ==========================================
 app.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -29,7 +34,7 @@ app.get('/health', async (req, res) => {
       message: 'Simply API is running',
       timestamp: new Date().toISOString(),
       database: 'connected',
-      version: '2.1.0-apprunner'
+      version: '2.2.0-auth-rbac'
     });
   } catch (error: any) {
     res.status(500).json({
@@ -42,8 +47,10 @@ app.get('/health', async (req, res) => {
 });
 
 // ==========================================
-// BACKOFFICE AUTH
+// AUTH ENDPOINTS
 // ==========================================
+
+// Login
 app.post('/api/backoffice/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -55,43 +62,238 @@ app.post('/api/backoffice/auth/login', async (req, res) => {
       });
     }
 
-    const ADMIN_EMAIL = 'admin@simply.com';
-    const ADMIN_PASSWORD = 'Admin123!';
+    const result = await authService.login(email, password);
 
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      const token = 'jwt-token-' + Date.now();
-
-      return res.json({
-        success: true,
-        token,
-        user: {
-          id: '1',
-          email: ADMIN_EMAIL,
-          first_name: 'Super',
-          last_name: 'Admin',
-          role: 'SUPER_ADMIN',
-          permissions: ['*']
-        }
-      });
-    }
-
-    res.status(401).json({
-      success: false,
-      error: 'Email o contraseña incorrectos'
+    res.json({
+      success: true,
+      data: result
     });
   } catch (error: any) {
     console.error('Login error:', error);
+    res.status(401).json({
+      success: false,
+      error: error.message || 'Error en login'
+    });
+  }
+});
+
+// Get current user
+app.get('/api/backoffice/auth/me', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const employee = await employeeService.getById(req.employee!.id);
+    
+    res.json({
+      success: true,
+      data: employee
+    });
+  } catch (error: any) {
     res.status(500).json({
       success: false,
-      error: 'Error interno del servidor'
+      error: error.message
+    });
+  }
+});
+
+// Logout
+app.post('/api/backoffice/auth/logout', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Sesión cerrada exitosamente'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
 
 // ==========================================
-// BACKOFFICE USERS
+// EMPLOYEES ENDPOINTS  
 // ==========================================
-app.get('/api/backoffice/users', async (req, res) => {
+
+// Get all employees
+app.get('/api/backoffice/employees', authMiddleware, requirePermission('employees:read'), async (req: AuthRequest, res) => {
+  try {
+    const { page, limit, search, role, status } = req.query;
+    
+    const result = await employeeService.getAll({
+      page: page ? parseInt(page as string) : undefined,
+      limit: limit ? parseInt(limit as string) : undefined,
+      search: search as string,
+      role: role as string,
+      status: status as string
+    });
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    console.error('Get employees error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener empleados'
+    });
+  }
+});
+
+// Get employee by ID
+app.get('/api/backoffice/employees/:id', authMiddleware, requirePermission('employees:read'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const employee = await employeeService.getById(id);
+
+    res.json({
+      success: true,
+      data: employee
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Create employee
+app.post('/api/backoffice/employees', authMiddleware, requirePermission('employees:create'), async (req: AuthRequest, res) => {
+  try {
+    const { email, password, firstName, lastName, role } = req.body;
+
+    if (!email || !password || !firstName || !lastName || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'Todos los campos son requeridos'
+      });
+    }
+
+    const employee = await employeeService.create({
+      email,
+      password,
+      firstName,
+      lastName,
+      role
+    });
+
+    res.status(201).json({
+      success: true,
+      data: employee,
+      message: 'Empleado creado exitosamente'
+    });
+  } catch (error: any) {
+    console.error('Create employee error:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update employee
+app.put('/api/backoffice/employees/:id', authMiddleware, requirePermission('employees:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, role, status, avatarUrl, preferences } = req.body;
+
+    const employee = await employeeService.update(id, {
+      firstName,
+      lastName,
+      role,
+      status,
+      avatarUrl,
+      preferences
+    });
+
+    res.json({
+      success: true,
+      data: employee,
+      message: 'Empleado actualizado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update password
+app.patch('/api/backoffice/employees/:id/password', authMiddleware, requirePermission('employees:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'La contraseña debe tener al menos 8 caracteres'
+      });
+    }
+
+    await employeeService.updatePassword(id, newPassword);
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Delete (soft) employee
+app.delete('/api/backoffice/employees/:id', authMiddleware, requirePermission('employees:delete'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.employee!.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'No puedes desactivar tu propia cuenta'
+      });
+    }
+
+    await employeeService.delete(id);
+
+    res.json({
+      success: true,
+      message: 'Empleado desactivado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get stats
+app.get('/api/backoffice/employees/stats/overview', authMiddleware, requirePermission('employees:read'), async (req: AuthRequest, res) => {
+  try {
+    const stats = await employeeService.getStats();
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estadísticas'
+    });
+  }
+});
+
+// ==========================================
+// USERS, LEADS, LANDING (Sin cambios)
+// ==========================================
+
+app.get('/api/backoffice/users', authMiddleware, requirePermission('users:read'), async (req, res) => {
   try {
     const users = await prisma.users.findMany({
       select: {
@@ -116,7 +318,6 @@ app.get('/api/backoffice/users', async (req, res) => {
       total: users.length
     });
   } catch (error: any) {
-    console.error('Get users error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener usuarios'
@@ -124,24 +325,14 @@ app.get('/api/backoffice/users', async (req, res) => {
   }
 });
 
-// ==========================================
-// BACKOFFICE LEADS
-// ==========================================
-app.get('/api/backoffice/leads', async (req, res) => {
+app.get('/api/backoffice/leads', authMiddleware, requirePermission('leads:read'), async (req, res) => {
   try {
-    const { 
-      page = '1', 
-      limit = '20', 
-      search = '', 
-      sortBy = 'created_at', 
-      order = 'desc' 
-    } = req.query;
+    const { page = '1', limit = '20', search = '', sortBy = 'created_at', order = 'desc' } = req.query;
 
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    // Construir filtro de búsqueda
     const where: any = {};
     if (search) {
       where.OR = [
@@ -152,33 +343,15 @@ app.get('/api/backoffice/leads', async (req, res) => {
       ];
     }
 
-    // Obtener leads con paginación
     const [leads, total] = await Promise.all([
       prisma.leads.findMany({
         where,
         orderBy: { [sortBy as string]: order === 'asc' ? 'asc' : 'desc' },
         skip,
-        take: limitNum,
-        select: {
-          id: true,
-          nombre: true,
-          apellido: true,
-          email: true,
-          telefono: true,
-          terminos_aceptados: true,
-          source: true,
-          utm_source: true,
-          utm_medium: true,
-          utm_campaign: true,
-          status: true,
-          created_at: true,
-          updated_at: true
-        }
+        take: limitNum
       }),
       prisma.leads.count({ where })
     ]);
-
-    const totalPages = Math.ceil(total / limitNum);
 
     res.json({
       success: true,
@@ -186,11 +359,10 @@ app.get('/api/backoffice/leads', async (req, res) => {
         leads,
         total,
         page: pageNum,
-        totalPages
+        totalPages: Math.ceil(total / limitNum)
       }
     });
   } catch (error: any) {
-    console.error('Get leads error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener leads'
@@ -198,13 +370,10 @@ app.get('/api/backoffice/leads', async (req, res) => {
   }
 });
 
-app.get('/api/backoffice/leads/:id', async (req, res) => {
+app.get('/api/backoffice/leads/:id', authMiddleware, requirePermission('leads:read'), async (req, res) => {
   try {
     const { id } = req.params;
-
-    const lead = await prisma.leads.findUnique({
-      where: { id }
-    });
+    const lead = await prisma.leads.findUnique({ where: { id } });
 
     if (!lead) {
       return res.status(404).json({
@@ -218,7 +387,6 @@ app.get('/api/backoffice/leads/:id', async (req, res) => {
       data: lead
     });
   } catch (error: any) {
-    console.error('Get lead error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener lead'
@@ -226,27 +394,13 @@ app.get('/api/backoffice/leads/:id', async (req, res) => {
   }
 });
 
-app.get('/api/backoffice/leads/export', async (req, res) => {
+app.get('/api/backoffice/leads/export/csv', authMiddleware, requirePermission('leads:export'), async (req, res) => {
   try {
     const leads = await prisma.leads.findMany({
       orderBy: { created_at: 'desc' }
     });
 
-    // Crear CSV
-    const headers = [
-      'ID',
-      'Nombre',
-      'Apellido',
-      'Email',
-      'Teléfono',
-      'Source',
-      'UTM Source',
-      'UTM Medium',
-      'UTM Campaign',
-      'Estado',
-      'Fecha Registro'
-    ];
-
+    const headers = ['ID', 'Nombre', 'Apellido', 'Email', 'Teléfono', 'Source', 'UTM Source', 'UTM Medium', 'UTM Campaign', 'Estado', 'Fecha Registro'];
     const rows = leads.map((lead: any) => [
       lead.id,
       lead.nombre,
@@ -268,9 +422,8 @@ app.get('/api/backoffice/leads/export', async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=leads-${Date.now()}.csv`);
-    res.send('\uFEFF' + csv); // BOM para Excel
+    res.send('\uFEFF' + csv);
   } catch (error: any) {
-    console.error('Export leads error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al exportar leads'
@@ -278,9 +431,6 @@ app.get('/api/backoffice/leads/export', async (req, res) => {
   }
 });
 
-// ==========================================
-// LANDING - LEADS
-// ==========================================
 app.post('/api/landing/leads', async (req, res) => {
   try {
     const { nombre, apellido, email, telefono, terminos_aceptados, source, utm_source, utm_medium, utm_campaign } = req.body;
@@ -307,19 +457,12 @@ app.post('/api/landing/leads', async (req, res) => {
       }
     });
 
-    console.log('✅ Lead created:', lead.id, email);
-
     res.status(201).json({
       success: true,
       message: '¡Gracias por registrarte! Te contactaremos pronto.',
-      data: {
-        id: lead.id,
-        email: lead.email
-      }
+      data: { id: lead.id, email: lead.email }
     });
   } catch (error: any) {
-    console.error('Create lead error:', error);
-    
     if (error.code === 'P2002') {
       return res.status(400).json({
         success: false,
@@ -334,9 +477,6 @@ app.post('/api/landing/leads', async (req, res) => {
   }
 });
 
-// ==========================================
-// LANDING - CONTACT
-// ==========================================
 app.post('/api/landing/contact', async (req, res) => {
   try {
     const { nombre, email, asunto, mensaje } = req.body;
@@ -358,15 +498,12 @@ app.post('/api/landing/contact', async (req, res) => {
       }
     });
 
-    console.log('✅ Contact message created:', contact.id);
-
     res.status(201).json({
       success: true,
       message: '¡Mensaje enviado! Te responderemos pronto.',
       data: { id: contact.id }
     });
   } catch (error: any) {
-    console.error('Create contact error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al enviar el mensaje'
@@ -374,9 +511,6 @@ app.post('/api/landing/contact', async (req, res) => {
   }
 });
 
-// ==========================================
-// LANDING - CALCULATOR
-// ==========================================
 app.post('/api/landing/calculator', async (req, res) => {
   try {
     const { monto_inversion, plazo_meses, nivel_cliente, rendimiento_total, monto_final, financiacion_disponible } = req.body;
@@ -392,14 +526,11 @@ app.post('/api/landing/calculator', async (req, res) => {
       }
     });
 
-    console.log('✅ Simulation created:', simulation.id);
-
     res.status(201).json({
       success: true,
       data: { id: simulation.id }
     });
   } catch (error: any) {
-    console.error('Create simulation error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al guardar simulación'
@@ -407,9 +538,6 @@ app.post('/api/landing/calculator', async (req, res) => {
   }
 });
 
-// ==========================================
-// LANDING - NEWSLETTER
-// ==========================================
 app.post('/api/landing/newsletter', async (req, res) => {
   try {
     const { email } = req.body;
@@ -429,16 +557,12 @@ app.post('/api/landing/newsletter', async (req, res) => {
       }
     });
 
-    console.log('✅ Newsletter subscriber created:', subscriber.id);
-
     res.status(201).json({
       success: true,
       message: '¡Suscripción exitosa!',
       data: { id: subscriber.id }
     });
   } catch (error: any) {
-    console.error('Newsletter subscription error:', error);
-    
     if (error.code === 'P2002') {
       return res.status(400).json({
         success: false,
@@ -461,19 +585,7 @@ app.use((req, res) => {
     success: false,
     error: 'Ruta no encontrada',
     path: req.path,
-    method: req.method,
-    availableRoutes: [
-      'GET /health',
-      'POST /api/backoffice/auth/login',
-      'GET /api/backoffice/users',
-      'GET /api/backoffice/leads',
-      'GET /api/backoffice/leads/:id',
-      'GET /api/backoffice/leads/export',
-      'POST /api/landing/leads',
-      'POST /api/landing/contact',
-      'POST /api/landing/calculator',
-      'POST /api/landing/newsletter'
-    ]
+    method: req.method
   });
 });
 
@@ -495,7 +607,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const port = parseInt(process.env.PORT || '8080', 10);
 
 app.listen(port, '0.0.0.0', async () => {
-  console.log(`\n🚀 Simply API started`);
+  console.log(`\n🚀 Simply API v2.2.0 started`);
   console.log(`📊 Port: ${port}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`);
   
@@ -506,6 +618,7 @@ app.listen(port, '0.0.0.0', async () => {
     console.error(`❌ Database: Connection failed`);
   }
   
+  console.log(`\n✨ Features: Auth Real + RBAC + Employees`);
   console.log(`\n`);
 });
 

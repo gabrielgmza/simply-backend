@@ -8,15 +8,53 @@ datasource db {
 }
 
 model employees {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  first_name String
-  last_name  String
-  role       String
-  password   String
-  active     Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id                String          @id @default(uuid())
+  email             String          @unique
+  first_name        String
+  last_name         String
+  avatar_url        String?
+  
+  // Seguridad
+  password_hash     String
+  role              EmployeeRole
+  
+  // Configuración
+  preferences       Json?
+  
+  // Estado
+  status            EmployeeStatus  @default(ACTIVE)
+  
+  // Sesión
+  last_login_at     DateTime?
+  last_activity_at  DateTime?
+  
+  // Timestamps
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  
+  // Relaciones
+  tickets           tickets[]
+  assigned_tickets  tickets[]       @relation("AssignedTickets")
+  aria_conversations aria_conversations[]
+  ticket_comments   ticket_comments[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+enum EmployeeRole {
+  SUPER_ADMIN
+  ADMIN
+  COMPLIANCE
+  CUSTOMER_SERVICE
+  ANALYST
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 model users {
@@ -78,4 +116,91 @@ model newsletter_subscribers {
   source     String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+model tickets {
+  id              String          @id @default(uuid())
+  
+  // Info básica
+  title           String
+  description     String
+  category        TicketCategory
+  priority        TicketPriority  @default(MEDIUM)
+  status          TicketStatus    @default(OPEN)
+  
+  // Asignación
+  created_by_id   String
+  created_by      employees       @relation(fields: [created_by_id], references: [id])
+  
+  assigned_to_id  String?
+  assigned_to     employees?      @relation("AssignedTickets", fields: [assigned_to_id], references: [id])
+  
+  // Metadata
+  tags            String[]
+  attachments     Json?
+  
+  // Timestamps
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  resolved_at     DateTime?
+  
+  // Relaciones
+  comments        ticket_comments[]
+  
+  @@index([status])
+  @@index([priority])
+  @@index([created_by_id])
+  @@index([assigned_to_id])
+}
+
+enum TicketCategory {
+  BUG
+  FEATURE_REQUEST
+  QUESTION
+  TASK
+  INCIDENT
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+model ticket_comments {
+  id              String    @id @default(uuid())
+  ticket_id       String
+  ticket          tickets   @relation(fields: [ticket_id], references: [id])
+  
+  employee_id     String
+  employee        employees @relation(fields: [employee_id], references: [id])
+  comment         String
+  is_internal     Boolean   @default(false)
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([ticket_id])
+}
+
+model aria_conversations {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employee        employees @relation(fields: [employee_id], references: [id])
+  title           String
+  
+  messages        Json
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([employee_id])
 }

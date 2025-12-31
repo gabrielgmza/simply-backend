@@ -1,31 +1,33 @@
 {
   "name": "simply-backend",
-  "version": "1.0.0",
-  "description": "Simply Backend API",
+  "version": "2.2.0",
+  "description": "Simply Backend API v2.2.0 - Auth Real + RBAC + Employees",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "postinstall": "prisma generate"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "express": "^4.21.2",
+    "express": "^4.19.2",
     "cors": "^2.8.5",
-    "helmet": "^8.0.0",
-    "dotenv": "^16.4.7"
+    "helmet": "^7.1.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "@anthropic-ai/sdk": "^0.32.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
     "@types/cors": "^2.8.17",
-    "@types/node": "^18.19.0",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.7",
+    "typescript": "^5.5.4",
+    "tsx": "^4.16.2",
+    "prisma": "^5.22.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }
