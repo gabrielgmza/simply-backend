@@ -335,9 +335,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // ==========================================
 // START SERVER
 // ==========================================
-app.listen(PORT, '0.0.0.0', async () => {
+const port = parseInt(process.env.PORT || '8080', 10);
+
+app.listen(port, '0.0.0.0', async () => {
   console.log(`\n🚀 Simply API started`);
-  console.log(`📊 Port: ${PORT}`);
+  console.log(`📊 Port: ${port}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`);
   
   try {
