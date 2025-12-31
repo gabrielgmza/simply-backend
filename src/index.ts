@@ -578,6 +578,98 @@ app.post('/api/landing/newsletter', async (req, res) => {
 });
 
 // ==========================================
+// DASHBOARD ENDPOINTS
+// ==========================================
+import { dashboardService } from './services/dashboardService';
+
+// Get general stats
+app.get('/api/backoffice/dashboard/stats', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const stats = await dashboardService.getGeneralStats();
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error: any) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estadísticas'
+    });
+  }
+});
+
+// Get growth data
+app.get('/api/backoffice/dashboard/growth', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const days = req.query.days ? parseInt(req.query.days as string) : 30;
+    const data = await dashboardService.getGrowthData(days);
+    res.json({
+      success: true,
+      data
+    });
+  } catch (error: any) {
+    console.error('Dashboard growth error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener datos de crecimiento'
+    });
+  }
+});
+
+// Get recent activity
+app.get('/api/backoffice/dashboard/activity', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    const activity = await dashboardService.getRecentActivity(limit);
+    res.json({
+      success: true,
+      data: activity
+    });
+  } catch (error: any) {
+    console.error('Dashboard activity error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener actividad reciente'
+    });
+  }
+});
+
+// Get top performers
+app.get('/api/backoffice/dashboard/performers', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const performers = await dashboardService.getTopPerformers();
+    res.json({
+      success: true,
+      data: performers
+    });
+  } catch (error: any) {
+    console.error('Dashboard performers error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener top performers'
+    });
+  }
+});
+
+// Get lead conversion
+app.get('/api/backoffice/dashboard/conversion', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const conversion = await dashboardService.getLeadConversion();
+    res.json({
+      success: true,
+      data: conversion
+    });
+  } catch (error: any) {
+    console.error('Dashboard conversion error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener datos de conversión'
+    });
+  }
+});
+
+// ==========================================
 // TICKETS ENDPOINTS
 // ==========================================
 import { ticketService } from './services/ticketService';
@@ -912,6 +1004,264 @@ app.patch('/api/backoffice/aria/conversations/:id', authMiddleware, requirePermi
     res.status(404).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+// ==========================================
+// NOTIFICATIONS ENDPOINTS
+// ==========================================
+import { notificationService } from './services/notificationService';
+
+// Get notifications for current employee
+app.get('/api/backoffice/notifications', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { limit } = req.query;
+    const notifications = await notificationService.getByEmployee(
+      req.employee!.id,
+      limit ? parseInt(limit as string) : undefined
+    );
+
+    res.json({
+      success: true,
+      data: notifications
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener notificaciones'
+    });
+  }
+});
+
+// Get unread count
+app.get('/api/backoffice/notifications/unread/count', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const count = await notificationService.getUnreadCount(req.employee!.id);
+
+    res.json({
+      success: true,
+      data: { count }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener contador'
+    });
+  }
+});
+
+// Mark notification as read
+app.patch('/api/backoffice/notifications/:id/read', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const success = await notificationService.markAsRead(id, req.employee!.id);
+
+    if (!success) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notificación no encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Notificación marcada como leída'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al marcar notificación'
+    });
+  }
+});
+
+// Mark all as read
+app.post('/api/backoffice/notifications/read-all', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    await notificationService.markAllAsRead(req.employee!.id);
+
+    res.json({
+      success: true,
+      message: 'Todas las notificaciones marcadas como leídas'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al marcar notificaciones'
+    });
+  }
+});
+
+// Delete notification
+app.delete('/api/backoffice/notifications/:id', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    await notificationService.delete(id, req.employee!.id);
+
+    res.json({
+      success: true,
+      message: 'Notificación eliminada'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al eliminar notificación'
+    });
+  }
+});
+
+// ==========================================
+// USER DETAIL ENDPOINTS
+// ==========================================
+import { userService } from './services/userService';
+
+// Get user by ID (detailed)
+app.get('/api/backoffice/users/:id', authMiddleware, requirePermission('users:read'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = await userService.getById(id);
+
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update KYC status
+app.patch('/api/backoffice/users/:id/kyc', authMiddleware, requirePermission('kyc:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'status es requerido'
+      });
+    }
+
+    const user = await userService.updateKYCStatus(id, status, req.employee!.id);
+
+    res.json({
+      success: true,
+      data: user,
+      message: 'Estado de KYC actualizado'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get user activity
+app.get('/api/backoffice/users/:id/activity', authMiddleware, requirePermission('users:read'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { limit } = req.query;
+    
+    const activity = await userService.getActivity(id, limit ? parseInt(limit as string) : undefined);
+
+    res.json({
+      success: true,
+      data: activity
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener actividad'
+    });
+  }
+});
+
+// Update user status
+app.patch('/api/backoffice/users/:id/status', authMiddleware, requirePermission('users:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'status es requerido'
+      });
+    }
+
+    const user = await userService.updateStatus(id, status);
+
+    res.json({
+      success: true,
+      data: user,
+      message: 'Estado de usuario actualizado'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==========================================
+// EXPORT ENDPOINTS
+// ==========================================
+import { exportService } from './services/exportService';
+
+// Export employees to CSV
+app.get('/api/backoffice/export/employees', authMiddleware, requirePermission('employees:read'), async (req: AuthRequest, res) => {
+  try {
+    const { headers, rows } = await exportService.exportEmployeesToCSV();
+    const csv = exportService.formatToCSV(headers, rows);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=employees-${Date.now()}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al exportar empleados'
+    });
+  }
+});
+
+// Export tickets to CSV
+app.get('/api/backoffice/export/tickets', authMiddleware, requirePermission('tickets:read'), async (req: AuthRequest, res) => {
+  try {
+    const { headers, rows } = await exportService.exportTicketsToCSV();
+    const csv = exportService.formatToCSV(headers, rows);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=tickets-${Date.now()}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al exportar tickets'
+    });
+  }
+});
+
+// Export users to CSV
+app.get('/api/backoffice/export/users', authMiddleware, requirePermission('users:read'), async (req: AuthRequest, res) => {
+  try {
+    const { headers, rows } = await exportService.exportUsersToCSV();
+    const csv = exportService.formatToCSV(headers, rows);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=users-${Date.now()}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al exportar usuarios'
     });
   }
 });

@@ -37,6 +37,7 @@ model employees {
   assigned_tickets  tickets[]       @relation("AssignedTickets")
   aria_conversations aria_conversations[]
   ticket_comments   ticket_comments[]
+  notifications     notifications[]
   
   @@index([email])
   @@index([role])
@@ -204,3 +205,23 @@ model aria_conversations {
   
   @@index([employee_id])
 }
+
+model notifications {
+  id          String    @id @default(uuid())
+  employee_id String
+  type        String    // TICKET_ASSIGNED, NEW_USER, TICKET_COMMENT, etc
+  title       String
+  message     String
+  link        String?
+  metadata    Json      @default("{}")
+  is_read     Boolean   @default(false)
+  read_at     DateTime?
+  
+  created_at  DateTime  @default(now())
+  
+  employee    employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  
+  @@index([employee_id])
+  @@index([is_read])
+}
+
