@@ -2,7 +2,7 @@
 
 ## [2.2.0] - 2024-12-31
 
-### ✨ Added - AUTH REAL + RBAC + EMPLOYEES
+### ✨ Added - AUTH + RBAC + EMPLOYEES + TICKETS + ARIA
 
 **Autenticación Segura:**
 - JWT con access + refresh tokens (8h + 7d)
@@ -14,55 +14,68 @@
 **Sistema de Roles (RBAC):**
 - 5 roles: SUPER_ADMIN, ADMIN, COMPLIANCE, CUSTOMER_SERVICE, ANALYST
 - Matriz de permisos completa
-- Middleware `requirePermission`
-- Middleware `requireRole`
+- Middleware `requirePermission` y `requireRole`
 - Wildcard support (employees:*)
 
 **Gestión de Empleados:**
-- GET /api/backoffice/employees - Lista con paginación y filtros
-- POST /api/backoffice/employees - Crear empleado
-- GET /api/backoffice/employees/:id - Detalle
-- PUT /api/backoffice/employees/:id - Actualizar
-- DELETE /api/backoffice/employees/:id - Soft delete
-- PATCH /api/backoffice/employees/:id/password - Cambiar password
-- GET /api/backoffice/employees/stats/overview - Estadísticas
+- GET /api/backoffice/employees
+- POST /api/backoffice/employees
+- GET /api/backoffice/employees/:id
+- PUT /api/backoffice/employees/:id
+- DELETE /api/backoffice/employees/:id
+- PATCH /api/backoffice/employees/:id/password
+- GET /api/backoffice/employees/stats/overview
+
+**Sistema de Tickets:**
+- GET /api/backoffice/tickets
+- POST /api/backoffice/tickets
+- GET /api/backoffice/tickets/:id
+- PUT /api/backoffice/tickets/:id
+- PATCH /api/backoffice/tickets/:id/assign
+- PATCH /api/backoffice/tickets/:id/status
+- POST /api/backoffice/tickets/:id/comments
+- GET /api/backoffice/tickets/stats/overview
+
+**Aria AI Assistant:**
+- POST /api/backoffice/aria/chat
+- GET /api/backoffice/aria/conversations
+- GET /api/backoffice/aria/conversations/:id
+- DELETE /api/backoffice/aria/conversations/:id
+- PATCH /api/backoffice/aria/conversations/:id
+- Integración con Claude API (claude-sonnet-4-20250514)
 
 **Base de Datos:**
-- Tabla `employees` actualizada con password_hash, role, status, preferences
-- Enums: EmployeeRole, EmployeeStatus
-- Tabla `tickets` (para Entrega 2)
-- Tabla `ticket_comments` (para Entrega 2)
-- Tabla `aria_conversations` (para Entrega 2)
+- employees (actualizada con password_hash, role, status)
+- tickets (nueva)
+- ticket_comments (nueva)
+- aria_conversations (nueva)
+- Enums: EmployeeRole, EmployeeStatus, TicketCategory, TicketPriority, TicketStatus
+
+**Servicios:**
+- src/services/authService.ts
+- src/services/employeeService.ts
+- src/services/ticketService.ts
+- src/services/ariaService.ts
 
 **Seguridad:**
 - Auth middleware mejorado
 - Permission-based access control
-- Rate limiting (futuro)
 - Logs de accesos
 - Prevención de auto-eliminación
-
-### 🔧 Changed
-- Migración de auth hardcoded a JWT real
-- Endpoints protegidos con RBAC
-- Estructura modular (routes/, middleware/, services/, utils/)
 
 ### 📦 Dependencies
 - jsonwebtoken@^9.0.2
 - bcrypt@^5.1.1
-- @anthropic-ai/sdk@^0.32.1 (preparado para Aria)
+- @anthropic-ai/sdk@^0.32.1
 
 ---
 
 ## [2.1.1] - 2024-12-31
 
 ### Added
-- GET /api/backoffice/leads - Listar leads con paginación
-- GET /api/backoffice/leads/:id - Detalle de lead
-- GET /api/backoffice/leads/export/csv - Export CSV
-
-### Changed
-- README actualizado
-- Mejorado manejo de errores
+- GET /api/backoffice/leads
+- GET /api/backoffice/leads/:id
+- GET /api/backoffice/leads/export/csv
 
 ---
 

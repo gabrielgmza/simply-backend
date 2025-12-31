@@ -578,6 +578,345 @@ app.post('/api/landing/newsletter', async (req, res) => {
 });
 
 // ==========================================
+// TICKETS ENDPOINTS
+// ==========================================
+import { ticketService } from './services/ticketService';
+
+// Get all tickets
+app.get('/api/backoffice/tickets', authMiddleware, requirePermission('tickets:read'), async (req: AuthRequest, res) => {
+  try {
+    const { page, limit, status, priority, category, assignedTo, createdBy } = req.query;
+
+    const result = await ticketService.getAll({
+      page: page ? parseInt(page as string) : undefined,
+      limit: limit ? parseInt(limit as string) : undefined,
+      status: status as string,
+      priority: priority as string,
+      category: category as string,
+      assignedTo: assignedTo as string,
+      createdBy: createdBy as string
+    });
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener tickets'
+    });
+  }
+});
+
+// Get ticket by ID
+app.get('/api/backoffice/tickets/:id', authMiddleware, requirePermission('tickets:read'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const ticket = await ticketService.getById(id);
+
+    res.json({
+      success: true,
+      data: ticket
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Create ticket
+app.post('/api/backoffice/tickets', authMiddleware, requirePermission('tickets:create'), async (req: AuthRequest, res) => {
+  try {
+    const { title, description, category, priority, assignedToId, tags } = req.body;
+
+    if (!title || !description || !category || !priority) {
+      return res.status(400).json({
+        success: false,
+        error: 'Título, descripción, categoría y prioridad son requeridos'
+      });
+    }
+
+    const ticket = await ticketService.create({
+      title,
+      description,
+      category,
+      priority,
+      createdById: req.employee!.id,
+      assignedToId,
+      tags
+    });
+
+    res.status(201).json({
+      success: true,
+      data: ticket,
+      message: 'Ticket creado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update ticket
+app.put('/api/backoffice/tickets/:id', authMiddleware, requirePermission('tickets:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, category, priority, status, tags } = req.body;
+
+    const ticket = await ticketService.update(id, {
+      title,
+      description,
+      category,
+      priority,
+      status,
+      tags
+    });
+
+    res.json({
+      success: true,
+      data: ticket,
+      message: 'Ticket actualizado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Assign ticket
+app.patch('/api/backoffice/tickets/:id/assign', authMiddleware, requirePermission('tickets:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedToId } = req.body;
+
+    if (!assignedToId) {
+      return res.status(400).json({
+        success: false,
+        error: 'assignedToId es requerido'
+      });
+    }
+
+    const ticket = await ticketService.assign(id, assignedToId);
+
+    res.json({
+      success: true,
+      data: ticket,
+      message: 'Ticket asignado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update ticket status
+app.patch('/api/backoffice/tickets/:id/status', authMiddleware, requirePermission('tickets:update'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'status es requerido'
+      });
+    }
+
+    const ticket = await ticketService.updateStatus(id, status);
+
+    res.json({
+      success: true,
+      data: ticket,
+      message: 'Estado actualizado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Add comment to ticket
+app.post('/api/backoffice/tickets/:id/comments', authMiddleware, requirePermission('tickets:create'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { comment, isInternal } = req.body;
+
+    if (!comment) {
+      return res.status(400).json({
+        success: false,
+        error: 'comment es requerido'
+      });
+    }
+
+    const newComment = await ticketService.addComment({
+      ticketId: id,
+      employeeId: req.employee!.id,
+      comment,
+      isInternal
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newComment,
+      message: 'Comentario agregado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get ticket stats
+app.get('/api/backoffice/tickets/stats/overview', authMiddleware, requirePermission('tickets:read'), async (req: AuthRequest, res) => {
+  try {
+    const stats = await ticketService.getStats();
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estadísticas'
+    });
+  }
+});
+
+// ==========================================
+// ARIA AI ENDPOINTS
+// ==========================================
+import { ariaService } from './services/ariaService';
+
+// Chat with Aria
+app.post('/api/backoffice/aria/chat', authMiddleware, requirePermission('aria:use'), async (req: AuthRequest, res) => {
+  try {
+    const { message, conversationId } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: 'message es requerido'
+      });
+    }
+
+    const result = await ariaService.chat({
+      employeeId: req.employee!.id,
+      message,
+      conversationId
+    });
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    console.error('Aria chat error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Error al procesar el mensaje'
+    });
+  }
+});
+
+// Get conversations
+app.get('/api/backoffice/aria/conversations', authMiddleware, requirePermission('aria:use'), async (req: AuthRequest, res) => {
+  try {
+    const { limit } = req.query;
+    const conversations = await ariaService.getConversations(
+      req.employee!.id,
+      limit ? parseInt(limit as string) : undefined
+    );
+
+    res.json({
+      success: true,
+      data: conversations
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener conversaciones'
+    });
+  }
+});
+
+// Get conversation by ID
+app.get('/api/backoffice/aria/conversations/:id', authMiddleware, requirePermission('aria:use'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const conversation = await ariaService.getConversation(id, req.employee!.id);
+
+    res.json({
+      success: true,
+      data: conversation
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Delete conversation
+app.delete('/api/backoffice/aria/conversations/:id', authMiddleware, requirePermission('aria:use'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    await ariaService.deleteConversation(id, req.employee!.id);
+
+    res.json({
+      success: true,
+      message: 'Conversación eliminada exitosamente'
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update conversation title
+app.patch('/api/backoffice/aria/conversations/:id', authMiddleware, requirePermission('aria:use'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        error: 'title es requerido'
+      });
+    }
+
+    await ariaService.updateTitle(id, req.employee!.id, title);
+
+    res.json({
+      success: true,
+      message: 'Título actualizado exitosamente'
+    });
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==========================================
 // 404 HANDLER
 // ==========================================
 app.use((req, res) => {
@@ -618,7 +957,7 @@ app.listen(port, '0.0.0.0', async () => {
     console.error(`❌ Database: Connection failed`);
   }
   
-  console.log(`\n✨ Features: Auth Real + RBAC + Employees`);
+  console.log(`\n✨ Features: Auth + RBAC + Employees + Tickets + Aria AI`);
   console.log(`\n`);
 });
 
