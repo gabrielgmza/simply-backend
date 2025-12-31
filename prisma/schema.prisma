@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model employees {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  first_name String
+  last_name  String
+  role       String
+  password   String
+  active     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model users {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  first_name  String
+  last_name   String
+  dni         String?  @unique
+  phone       String?
+  user_status String   @default("active")
+  kyc_status  String   @default("pending")
+  user_level  String   @default("plata")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model leads {
+  id                  String    @id @default(uuid())
+  nombre              String
+  apellido            String
+  email               String    @unique
+  telefono            String?
+  terminos_aceptados  Boolean   @default(false)
+  source              String?
+  utm_source          String?
+  utm_medium          String?
+  utm_campaign        String?
+  status              String    @default("new")
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+}
+
+model contact_messages {
+  id         String   @id @default(uuid())
+  nombre     String
+  email      String
+  asunto     String?
+  mensaje    String
+  status     String   @default("new")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model calculator_simulations {
+  id                      String   @id @default(uuid())
+  monto_inversion         Decimal  @db.Decimal(15, 2)
+  plazo_meses             Int
+  nivel_cliente           String   @default("plata")
+  rendimiento_total       Decimal? @db.Decimal(15, 2)
+  monto_final             Decimal? @db.Decimal(15, 2)
+  financiacion_disponible Decimal? @db.Decimal(15, 2)
+  created_at              DateTime @default(now())
+}
+
+model newsletter_subscribers {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  status     String   @default("active")
+  source     String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
