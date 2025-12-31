@@ -18,8 +18,12 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
+# Copy and prepare migration script
+COPY migrate-and-start.sh .
+RUN chmod +x migrate-and-start.sh
+
 # Expose port
 EXPOSE 8080
 
-# Start application
-CMD ["npm", "start"]
+# Start with auto-migration
+CMD ["./migrate-and-start.sh"]
