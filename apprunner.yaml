@@ -1,0 +1,20 @@
+version: 1.0
+runtime: nodejs18
+build:
+  commands:
+    pre-build:
+      - echo "Installing dependencies..."
+    build:
+      - npm install
+      - npm run build
+      - npx prisma generate
+    post-build:
+      - echo "Build completed!"
+run:
+  runtime-version: 18
+  command: sh migrate-and-start.sh
+  network:
+    port: 8080
+  env:
+    - name: NODE_ENV
+      value: "production"
