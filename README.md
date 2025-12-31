@@ -145,7 +145,7 @@ bash disable-auto-migration.sh
 DATABASE_URL=postgresql://USER:PASS@HOST:5432/simply
 JWT_SECRET=tu-secret-super-seguro
 JWT_REFRESH_SECRET=tu-refresh-secret-super-seguro
-ANTHROPIC_API_KEY=sk-ant-api03-... # Para Aria AI
+ANTHROPIC_API_KEY=<your-anthropic-api-key-here>  # Para Aria AI
 NODE_ENV=production
 PORT=8080
 ```

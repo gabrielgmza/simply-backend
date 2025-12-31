@@ -1,5 +1,5 @@
 version: 1.0
-runtime: nodejs18
+runtime: nodejs20
 build:
   commands:
     pre-build:
@@ -10,9 +10,10 @@ build:
       - npx prisma generate
     post-build:
       - echo "Build completed!"
+      - chmod +x migrate-and-start.sh
 run:
-  runtime-version: 18
-  command: sh migrate-and-start.sh
+  runtime-version: 20
+  command: bash ./migrate-and-start.sh
   network:
     port: 8080
   env:
