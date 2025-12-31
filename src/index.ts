@@ -125,6 +125,160 @@ app.get('/api/backoffice/users', async (req, res) => {
 });
 
 // ==========================================
+// BACKOFFICE LEADS
+// ==========================================
+app.get('/api/backoffice/leads', async (req, res) => {
+  try {
+    const { 
+      page = '1', 
+      limit = '20', 
+      search = '', 
+      sortBy = 'created_at', 
+      order = 'desc' 
+    } = req.query;
+
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Construir filtro de búsqueda
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { nombre: { contains: search as string, mode: 'insensitive' } },
+        { apellido: { contains: search as string, mode: 'insensitive' } },
+        { email: { contains: search as string, mode: 'insensitive' } },
+        { telefono: { contains: search as string, mode: 'insensitive' } }
+      ];
+    }
+
+    // Obtener leads con paginación
+    const [leads, total] = await Promise.all([
+      prisma.leads.findMany({
+        where,
+        orderBy: { [sortBy as string]: order === 'asc' ? 'asc' : 'desc' },
+        skip,
+        take: limitNum,
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          telefono: true,
+          terminos_aceptados: true,
+          source: true,
+          utm_source: true,
+          utm_medium: true,
+          utm_campaign: true,
+          status: true,
+          created_at: true,
+          updated_at: true
+        }
+      }),
+      prisma.leads.count({ where })
+    ]);
+
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.json({
+      success: true,
+      data: {
+        leads,
+        total,
+        page: pageNum,
+        totalPages
+      }
+    });
+  } catch (error: any) {
+    console.error('Get leads error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener leads'
+    });
+  }
+});
+
+app.get('/api/backoffice/leads/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const lead = await prisma.leads.findUnique({
+      where: { id }
+    });
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: 'Lead no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: lead
+    });
+  } catch (error: any) {
+    console.error('Get lead error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener lead'
+    });
+  }
+});
+
+app.get('/api/backoffice/leads/export', async (req, res) => {
+  try {
+    const leads = await prisma.leads.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+
+    // Crear CSV
+    const headers = [
+      'ID',
+      'Nombre',
+      'Apellido',
+      'Email',
+      'Teléfono',
+      'Source',
+      'UTM Source',
+      'UTM Medium',
+      'UTM Campaign',
+      'Estado',
+      'Fecha Registro'
+    ];
+
+    const rows = leads.map((lead: any) => [
+      lead.id,
+      lead.nombre,
+      lead.apellido,
+      lead.email,
+      lead.telefono || '',
+      lead.source,
+      lead.utm_source || '',
+      lead.utm_medium || '',
+      lead.utm_campaign || '',
+      lead.status || 'new',
+      new Date(lead.created_at).toISOString()
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=leads-${Date.now()}.csv`);
+    res.send('\uFEFF' + csv); // BOM para Excel
+  } catch (error: any) {
+    console.error('Export leads error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al exportar leads'
+    });
+  }
+});
+
+// ==========================================
 // LANDING - LEADS
 // ==========================================
 app.post('/api/landing/leads', async (req, res) => {
@@ -312,6 +466,9 @@ app.use((req, res) => {
       'GET /health',
       'POST /api/backoffice/auth/login',
       'GET /api/backoffice/users',
+      'GET /api/backoffice/leads',
+      'GET /api/backoffice/leads/:id',
+      'GET /api/backoffice/leads/export',
       'POST /api/landing/leads',
       'POST /api/landing/contact',
       'POST /api/landing/calculator',

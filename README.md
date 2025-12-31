@@ -19,6 +19,9 @@ Backend API para plataforma Simply fintech.
 ### Backoffice
 - `POST /api/backoffice/auth/login`
 - `GET /api/backoffice/users`
+- `GET /api/backoffice/leads` - Listar leads con paginación y búsqueda
+- `GET /api/backoffice/leads/:id` - Obtener detalle de un lead
+- `GET /api/backoffice/leads/export` - Exportar leads a CSV
 
 ### Landing
 - `POST /api/landing/leads`
@@ -37,3 +40,5 @@ NODE_ENV=production
 ## Deploy
 
 Deployed on AWS App Runner with auto-deploy from GitHub.
+
+**Production URL:** https://sbgndespfp.us-east-1.awsapprunner.com
