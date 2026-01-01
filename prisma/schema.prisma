@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model employees {
+  id                String          @id @default(uuid())
+  email             String          @unique
+  first_name        String
+  last_name         String
+  avatar_url        String?
+  
+  // Seguridad
+  password_hash     String
+  role              EmployeeRole
+  
+  // Configuración
+  preferences       Json?
+  
+  // Estado
+  status            EmployeeStatus  @default(ACTIVE)
+  
+  // Sesión
+  last_login_at     DateTime?
+  last_activity_at  DateTime?
+  
+  // Timestamps
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  
+  // Relaciones
+  tickets           tickets[]
+  assigned_tickets  tickets[]       @relation("AssignedTickets")
+  aria_conversations aria_conversations[]
+  ticket_comments   ticket_comments[]
+  notifications     notifications[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+enum EmployeeRole {
+  SUPER_ADMIN
+  ADMIN
+  COMPLIANCE
+  CUSTOMER_SERVICE
+  ANALYST
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model users {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  first_name  String
+  last_name   String
+  dni         String?  @unique
+  phone       String?
+  user_status String   @default("active")
+  kyc_status  String   @default("pending")
+  user_level  String   @default("plata")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model leads {
+  id                  String    @id @default(uuid())
+  nombre              String
+  apellido            String
+  email               String    @unique
+  telefono            String?
+  terminos_aceptados  Boolean   @default(false)
+  source              String?
+  utm_source          String?
+  utm_medium          String?
+  utm_campaign        String?
+  status              String    @default("new")
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+}
+
+model contact_messages {
+  id         String   @id @default(uuid())
+  nombre     String
+  email      String
+  asunto     String?
+  mensaje    String
+  status     String   @default("new")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model calculator_simulations {
+  id                      String   @id @default(uuid())
+  monto_inversion         Decimal  @db.Decimal(15, 2)
+  plazo_meses             Int
+  nivel_cliente           String   @default("plata")
+  rendimiento_total       Decimal? @db.Decimal(15, 2)
+  monto_final             Decimal? @db.Decimal(15, 2)
+  financiacion_disponible Decimal? @db.Decimal(15, 2)
+  created_at              DateTime @default(now())
+}
+
+model newsletter_subscribers {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  status     String   @default("active")
+  source     String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model tickets {
+  id              String          @id @default(uuid())
+  
+  // Info básica
+  title           String
+  description     String
+  category        TicketCategory
+  priority        TicketPriority  @default(MEDIUM)
+  status          TicketStatus    @default(OPEN)
+  
+  // Asignación
+  created_by_id   String
+  created_by      employees       @relation(fields: [created_by_id], references: [id])
+  
+  assigned_to_id  String?
+  assigned_to     employees?      @relation("AssignedTickets", fields: [assigned_to_id], references: [id])
+  
+  // Metadata
+  tags            String[]
+  attachments     Json?
+  
+  // Timestamps
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  resolved_at     DateTime?
+  
+  // Relaciones
+  comments        ticket_comments[]
+  
+  @@index([status])
+  @@index([priority])
+  @@index([created_by_id])
+  @@index([assigned_to_id])
+}
+
+enum TicketCategory {
+  BUG
+  FEATURE_REQUEST
+  QUESTION
+  TASK
+  INCIDENT
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+model ticket_comments {
+  id              String    @id @default(uuid())
+  ticket_id       String
+  ticket          tickets   @relation(fields: [ticket_id], references: [id])
+  
+  employee_id     String
+  employee        employees @relation(fields: [employee_id], references: [id])
+  comment         String
+  is_internal     Boolean   @default(false)
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([ticket_id])
+}
+
+model aria_conversations {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employee        employees @relation(fields: [employee_id], references: [id])
+  title           String
+  
+  messages        Json
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([employee_id])
+}
+
+model notifications {
+  id          String    @id @default(uuid())
+  employee_id String
+  type        String    // TICKET_ASSIGNED, NEW_USER, TICKET_COMMENT, etc
+  title       String
+  message     String
+  link        String?
+  metadata    Json      @default("{}")
+  is_read     Boolean   @default(false)
+  read_at     DateTime?
+  
+  created_at  DateTime  @default(now())
+  
+  employee    employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  
+  @@index([employee_id])
+  @@index([is_read])
+}
+
