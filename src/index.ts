@@ -1335,6 +1335,40 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // ==========================================
 const port = parseInt(process.env.PORT || '8080', 10);
 
+// Función para crear superadmin si no existe
+async function seedSuperAdmin() {
+  try {
+    const bcrypt = require('bcrypt');
+    
+    // Verificar si ya existe
+    const existing = await prisma.employee.findUnique({
+      where: { email: 'ggaldeano@paysur.com' }
+    });
+    
+    if (!existing) {
+      // Hash de la contraseña: 33094813MPGg18@
+      const passwordHash = await bcrypt.hash('33094813MPGg18@', 12);
+      
+      await prisma.employee.create({
+        data: {
+          email: 'ggaldeano@paysur.com',
+          firstName: 'Gabriel',
+          lastName: 'Galdeano',
+          passwordHash: passwordHash,
+          role: 'SUPER_ADMIN',
+          status: 'ACTIVE'
+        }
+      });
+      
+      console.log('✅ SuperAdmin creado: ggaldeano@paysur.com');
+    } else {
+      console.log('ℹ️ SuperAdmin ya existe: ggaldeano@paysur.com');
+    }
+  } catch (error) {
+    console.error('⚠️ Error creando SuperAdmin:', error);
+  }
+}
+
 app.listen(port, '0.0.0.0', async () => {
   console.log(`\n🚀 Simply API v2.2.0 started`);
   console.log(`📊 Port: ${port}`);
@@ -1343,6 +1377,9 @@ app.listen(port, '0.0.0.0', async () => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log(`✅ Database: Connected`);
+    
+    // Seed del SuperAdmin
+    await seedSuperAdmin();
   } catch (error) {
     console.error(`❌ Database: Connection failed`);
   }
