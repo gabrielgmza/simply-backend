@@ -7,8 +7,24 @@ import { authService } from './services/authService';
 import { employeeService } from './services/employeeService';
 
 const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 8080;
+
+// Verificar DATABASE_URL al inicio
+if (!process.env.DATABASE_URL) {
+  console.error('❌ ERROR: DATABASE_URL no está configurada');
+  console.error('Configura la variable de entorno DATABASE_URL en App Runner');
+}
+
+// Prisma client con lazy connection
+let prisma: PrismaClient;
+try {
+  prisma = new PrismaClient({
+    log: ['error', 'warn'],
+  });
+} catch (error) {
+  console.error('❌ Error inicializando Prisma:', error);
+  prisma = new PrismaClient();
+}
 
 // Middleware global
 app.use(helmet());
@@ -23,10 +39,34 @@ app.use((req, res, next) => {
 });
 
 // ==========================================
+// ROOT ENDPOINT
+// ==========================================
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Simply Backend API',
+    version: '2.2.1',
+    timestamp: new Date().toISOString(),
+    env: {
+      NODE_ENV: process.env.NODE_ENV || 'development',
+      DATABASE_URL: process.env.DATABASE_URL ? '✓ Configured' : '✗ Missing'
+    }
+  });
+});
+
+// ==========================================
 // HEALTH CHECK
 // ==========================================
 app.get('/health', async (req, res) => {
   try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(500).json({
+        success: false,
+        status: 'error',
+        database: 'not configured',
+        error: 'DATABASE_URL environment variable is not set'
+      });
+    }
     await prisma.$queryRaw`SELECT 1`;
     res.json({
       success: true,
@@ -34,7 +74,7 @@ app.get('/health', async (req, res) => {
       message: 'Simply API is running',
       timestamp: new Date().toISOString(),
       database: 'connected',
-      version: '2.2.0-auth-rbac'
+      version: '2.2.1-auth-rbac'
     });
   } catch (error: any) {
     res.status(500).json({
