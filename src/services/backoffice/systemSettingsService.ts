@@ -42,7 +42,11 @@ const DEFAULT_SETTINGS = {
   'levels.plata_min': { value: '0', type: 'number', category: 'levels', description: 'Inversión mínima nivel Plata' },
   'levels.oro_min': { value: '100000', type: 'number', category: 'levels', description: 'Inversión mínima nivel Oro' },
   'levels.black_min': { value: '500000', type: 'number', category: 'levels', description: 'Inversión mínima nivel Black' },
-  'levels.diamante_min': { value: '2000000', type: 'number', category: 'levels', description: 'Inversión mínima nivel Diamante' }
+  'levels.diamante_min': { value: '2000000', type: 'number', category: 'levels', description: 'Inversión mínima nivel Diamante' },
+  
+  // Aria AI
+  'aria_enabled': { value: 'true', type: 'boolean', category: 'features', description: 'Habilitar Aria AI globalmente' },
+  'aria_allowed_roles': { value: '["SUPER_ADMIN","ADMIN","COMPLIANCE","SUPPORT","FINANCE","OPERATIONS","RISK","AUDITOR","ANALYST"]', type: 'json', category: 'features', description: 'Roles con acceso a Aria' }
 };
 
 export const systemSettingsService = {
