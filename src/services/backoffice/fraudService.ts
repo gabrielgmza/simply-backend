@@ -361,32 +361,39 @@ async function evaluateIP(ctx: TransactionContext): Promise<RiskFactor | null> {
 async function evaluateDevice(ctx: TransactionContext): Promise<RiskFactor | null> {
   if (!ctx.deviceId) return null;
 
-  // Verificar si es un dispositivo nuevo
-  const knownDevices = await prisma.user_sessions.findMany({
+  // Verificar si es un dispositivo nuevo - device_info es JSON con deviceId dentro
+  const knownSessions = await prisma.user_sessions.findMany({
     where: { user_id: ctx.userId },
-    select: { device_id: true },
-    distinct: ['device_id'],
+    select: { device_info: true },
   });
 
-  const isNewDevice = !knownDevices.some(d => d.device_id === ctx.deviceId);
+  const knownDeviceIds = knownSessions
+    .map(s => (s.device_info as any)?.deviceId)
+    .filter(Boolean);
+
+  const isNewDevice = !knownDeviceIds.includes(ctx.deviceId);
   
   if (isNewDevice) {
     // Verificar si el dispositivo está asociado a otras cuentas
-    const otherUsers = await prisma.user_sessions.findMany({
+    const allSessions = await prisma.user_sessions.findMany({
       where: {
-        device_id: ctx.deviceId,
         user_id: { not: ctx.userId },
       },
-      select: { user_id: true },
-      distinct: ['user_id'],
+      select: { user_id: true, device_info: true },
     });
 
-    if (otherUsers.length > 0) {
+    const otherUsersWithDevice = new Set(
+      allSessions
+        .filter(s => (s.device_info as any)?.deviceId === ctx.deviceId)
+        .map(s => s.user_id)
+    );
+
+    if (otherUsersWithDevice.size > 0) {
       return {
         type: 'NEW_DEVICE',
         weight: 1.5,
         score: 70,
-        details: `Dispositivo asociado a ${otherUsers.length} otras cuentas`,
+        details: `Dispositivo asociado a ${otherUsersWithDevice.size} otras cuentas`,
       };
     }
 
@@ -412,12 +419,12 @@ async function evaluateRecipient(ctx: TransactionContext): Promise<RiskFactor | 
   if (ctx.recipientCVU) {
     recipientAccount = await prisma.accounts.findFirst({
       where: { cvu: ctx.recipientCVU },
-      include: { users: true },
+      include: { user: true },
     });
   } else if (ctx.recipientId) {
     recipientAccount = await prisma.accounts.findFirst({
       where: { user_id: ctx.recipientId },
-      include: { users: true },
+      include: { user: true },
     });
   }
 

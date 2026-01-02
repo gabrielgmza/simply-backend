@@ -117,7 +117,7 @@ async function createOperation(
   // Verificar usuario
   const user = await prisma.users.findUnique({
     where: { id: operation.userId },
-    include: { accounts: true },
+    include: { account: true },
   });
 
   if (!user) {
@@ -128,7 +128,7 @@ async function createOperation(
     throw new Error('Usuario no activo');
   }
 
-  const account = user.accounts;
+  const account = user.account;
   if (!account) {
     throw new Error('Usuario sin cuenta');
   }
@@ -230,7 +230,7 @@ async function executeOperation(
     where: { id: operationId },
     include: {
       users: {
-        include: { accounts: true },
+        include: { account: true },
       },
     },
   });
@@ -243,7 +243,7 @@ async function executeOperation(
     throw new Error(`Operación debe estar aprobada (estado: ${operation.status})`);
   }
 
-  const account = operation.users?.accounts;
+  const account = operation.users?.account;
   if (!account) {
     throw new Error('Cuenta de usuario no encontrada');
   }
@@ -347,13 +347,17 @@ async function executeOperation(
     // 6. Crear transacción
     await tx.transactions.create({
       data: {
+        user_id: operation.user_id,
         account_id: account.id,
         type: operation.type === 'BUY' ? 'OTC_BUY' : 'OTC_SELL',
         amount: operation.total_ars,
+        fee: operation.fee,
+        total: new Prisma.Decimal(operation.total_ars).plus(operation.fee),
         currency: 'ARS',
         status: 'COMPLETED',
         description: `OTC ${operation.type} ${operation.amount} ${operation.asset}`,
         reference_id: operationId,
+        completed_at: new Date(),
       },
     });
 

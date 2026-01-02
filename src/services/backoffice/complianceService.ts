@@ -35,7 +35,7 @@ async function generateROS(
   const user = await prisma.users.findUnique({
     where: { id: activity.userId },
     include: {
-      accounts: true,
+      account: true,
     },
   });
 
@@ -61,7 +61,7 @@ async function generateROS(
       tipo: 'PERSONA_FISICA',
       nombre: `${user.first_name} ${user.last_name}`,
       dni: user.dni,
-      domicilio: user.address,
+      domicilio: `${user.address_street || ''} ${user.address_number || ''}, ${user.address_city || ''}, ${user.address_state || ''}`.trim(),
       email: user.email,
       telefono: user.phone,
     },
@@ -240,14 +240,14 @@ async function checkThresholds(date?: Date): Promise<{
     if (total >= THRESHOLD_ARS) {
       const account = await prisma.accounts.findUnique({
         where: { id: op.account_id },
-        include: { users: true },
+        include: { user: true },
       });
       
       overThreshold.push({
         accountId: op.account_id,
         userId: account?.user_id,
-        userName: `${account?.users?.first_name} ${account?.users?.last_name}`,
-        email: account?.users?.email,
+        userName: `${account?.user?.first_name} ${account?.user?.last_name}`,
+        email: account?.user?.email,
         total,
         threshold: THRESHOLD_ARS,
         date: checkDate,
@@ -274,10 +274,10 @@ async function generateThresholdReport(
 ): Promise<any> {
   const account = await prisma.accounts.findUnique({
     where: { id: accountId },
-    include: { users: true },
+    include: { user: true },
   });
 
-  if (!account || !account.users) {
+  if (!account || !account.user) {
     throw new Error('Cuenta no encontrada');
   }
 
@@ -310,9 +310,9 @@ async function generateThresholdReport(
         tipo: 'OPERACION_UMBRAL',
         fecha: date,
         cliente: {
-          nombre: `${account.users.first_name} ${account.users.last_name}`,
-          dni: account.users.dni,
-          email: account.users.email,
+          nombre: `${account.user.first_name} ${account.user.last_name}`,
+          dni: account.user.dni,
+          email: account.user.email,
         },
         operaciones: transactions.map(tx => ({
           id: tx.id,
@@ -360,7 +360,7 @@ async function getUserComplianceStatus(userId: string): Promise<{
   const user = await prisma.users.findUnique({
     where: { id: userId },
     include: {
-      accounts: true,
+      account: true,
     },
   });
 
