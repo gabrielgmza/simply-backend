@@ -1,0 +1,542 @@
+// ============================================
+// PRISMA SCHEMA - SECURITY SERVICES
+// Agregar a prisma/schema.prisma
+// ============================================
+
+// ==========================================
+// TRUST SCORE
+// ==========================================
+
+model trust_scores {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                users    @relation(fields: [user_id], references: [id])
+  
+  score               Int      // 0-1000
+  tier                String   // CRITICAL, LOW, MEDIUM, HIGH, ELITE
+  
+  // Componentes
+  identity_score      Int      // 0-200
+  financial_score     Int      // 0-200
+  behavioral_score    Int      // 0-200
+  transactional_score Int      // 0-200
+  social_score        Int      // 0-200
+  
+  calculated_at       DateTime @default(now())
+  
+  @@index([user_id])
+  @@index([calculated_at])
+  @@index([tier])
+}
+
+// ==========================================
+// DEVICE FINGERPRINTING
+// ==========================================
+
+model user_devices {
+  id                String   @id @default(uuid())
+  user_id           String
+  user              users    @relation(fields: [user_id], references: [id])
+  
+  fingerprint       String
+  platform          String   // ios, android, web
+  os_version        String?
+  device_model      String?
+  app_version       String?
+  screen_resolution String?
+  timezone          String?
+  language          String?
+  
+  trust_level       String   @default("NEW") // NEW, KNOWN, TRUSTED, UNTRUSTED
+  
+  first_seen_at     DateTime @default(now())
+  last_seen_at      DateTime @default(now())
+  last_ip           String?
+  
+  login_count       Int      @default(0)
+  successful_ops    Int      @default(0)
+  failed_ops        Int      @default(0)
+  
+  is_emulator       Boolean  @default(false)
+  is_rooted         Boolean  @default(false)
+  is_blocked        Boolean  @default(false)
+  blocked_reason    String?
+  blocked_at        DateTime?
+  
+  trusted_at        DateTime?
+  
+  metadata          Json?
+  
+  @@unique([user_id, fingerprint])
+  @@index([user_id])
+  @@index([fingerprint])
+  @@index([trust_level])
+}
+
+// ==========================================
+// RISK ASSESSMENTS
+// ==========================================
+
+model risk_assessments {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                users    @relation(fields: [user_id], references: [id])
+  
+  session_id          String
+  operation           String
+  
+  risk_score          Int      // 0-100
+  risk_level          String   // MINIMAL, LOW, MEDIUM, HIGH, CRITICAL
+  required_action     String   // ALLOW, BIOMETRY, OTP, 2FA, STEP_UP, COOLDOWN, BLOCK
+  
+  risk_factors        Json     // Array of risk factors
+  
+  ip_address          String
+  device_fingerprint  String?
+  amount              Decimal? @db.Decimal(18, 2)
+  
+  challenge_completed Boolean  @default(false)
+  completed_at        DateTime?
+  
+  created_at          DateTime @default(now())
+  
+  @@index([user_id])
+  @@index([session_id])
+  @@index([created_at])
+  @@index([risk_level])
+}
+
+// ==========================================
+// IP BLACKLIST
+// ==========================================
+
+model ip_blacklist {
+  ip_address    String   @id
+  reason        String
+  source        String   // manual, auto, external
+  added_by      String?
+  added_at      DateTime @default(now())
+  expires_at    DateTime?
+  hit_count     Int      @default(0)
+  last_hit_at   DateTime?
+  
+  @@index([expires_at])
+}
+
+// ==========================================
+// FLAGGED ACCOUNTS (Recipients)
+// ==========================================
+
+model flagged_accounts {
+  id          String   @id @default(uuid())
+  cvu         String   @unique
+  alias       String?
+  
+  reason      String
+  risk_level  String   // LOW, MEDIUM, HIGH, CRITICAL
+  source      String   // manual, fraud_detection, compliance, external
+  
+  flagged_by  String?
+  flagged_at  DateTime @default(now())
+  expires_at  DateTime?
+  
+  metadata    Json?
+  
+  @@index([risk_level])
+}
+
+// ==========================================
+// EMPLOYEE ANOMALIES
+// ==========================================
+
+model employee_anomalies {
+  id                String   @id @default(uuid())
+  employee_id       String
+  employee          employees @relation(fields: [employee_id], references: [id])
+  
+  anomaly_type      String
+  severity          String   // LOW, MEDIUM, HIGH, CRITICAL
+  
+  description       String
+  details           Json?
+  baseline          Json?
+  actual            Json?
+  deviation_percent Float?
+  
+  ip_address        String
+  user_agent        String?
+  session_id        String?
+  
+  status            String   @default("DETECTED") // DETECTED, INVESTIGATING, FALSE_POSITIVE, CONFIRMED, RESOLVED
+  actions_taken     Json?
+  
+  detected_at       DateTime @default(now())
+  resolved_at       DateTime?
+  resolved_by       String?
+  resolution_notes  String?
+  
+  @@index([employee_id])
+  @@index([anomaly_type])
+  @@index([severity])
+  @@index([status])
+  @@index([detected_at])
+}
+
+// ==========================================
+// EMPLOYEE BASELINES
+// ==========================================
+
+model employee_baselines {
+  employee_id               String   @id
+  employee                  employees @relation(fields: [employee_id], references: [id])
+  
+  normal_work_hours         Json     // { start: number, end: number }
+  normal_work_days          Json     // number[]
+  
+  avg_daily_actions         Float    @default(0)
+  avg_daily_data_access     Float    @default(0)
+  avg_daily_approvals       Float    @default(0)
+  avg_daily_exports         Float    @default(0)
+  
+  assigned_client_ids       Json     @default("[]") // string[]
+  avg_clients_accessed_daily Float   @default(0)
+  
+  known_ips                 Json     @default("[]") // string[]
+  
+  updated_at                DateTime @default(now())
+}
+
+// ==========================================
+// EMPLOYEE SESSIONS
+// ==========================================
+
+model employee_sessions {
+  id                String   @id @default(uuid())
+  employee_id       String
+  employee          employees @relation(fields: [employee_id], references: [id])
+  
+  ip_address        String
+  user_agent        String?
+  device_info       Json?
+  geo_location      Json?
+  
+  is_valid          Boolean  @default(true)
+  invalidated_reason String?
+  
+  created_at        DateTime @default(now())
+  expires_at        DateTime
+  last_activity_at  DateTime @default(now())
+  
+  @@index([employee_id])
+  @@index([is_valid])
+  @@index([created_at])
+}
+
+// ==========================================
+// EMPLOYEE NOTIFICATIONS
+// ==========================================
+
+model employee_notifications {
+  id          String   @id @default(uuid())
+  employee_id String
+  employee    employees @relation(fields: [employee_id], references: [id])
+  
+  title       String
+  body        String
+  type        String
+  priority    String   @default("MEDIUM")
+  
+  data        Json?
+  
+  read        Boolean  @default(false)
+  read_at     DateTime?
+  
+  created_at  DateTime @default(now())
+  
+  @@index([employee_id])
+  @@index([read])
+  @@index([created_at])
+}
+
+// ==========================================
+// USER BEHAVIOR PROFILES
+// ==========================================
+
+model user_behavior_profiles {
+  user_id         String   @id
+  user            users    @relation(fields: [user_id], references: [id])
+  
+  temporal        Json     // Temporal patterns
+  transactional   Json     // Transaction patterns
+  navigation      Json     // Navigation patterns
+  device          Json     // Device patterns
+  risk_indicators Json     // Risk indicators
+  
+  segment         String   // POWER_USER, REGULAR, PASSIVE, DORMANT, NEW_USER, HIGH_VALUE, AT_RISK
+  
+  profile_version Int      @default(1)
+  data_points     Int      @default(0)
+  
+  updated_at      DateTime @default(now())
+  
+  @@index([segment])
+}
+
+// ==========================================
+// USER ANALYTICS EVENTS
+// ==========================================
+
+model user_analytics_events {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        users    @relation(fields: [user_id], references: [id])
+  
+  event_type  String   // screen_view, feature_used, search, etc.
+  event_data  Json?
+  
+  session_id  String?
+  device_fingerprint String?
+  
+  created_at  DateTime @default(now())
+  
+  @@index([user_id])
+  @@index([event_type])
+  @@index([created_at])
+}
+
+// ==========================================
+// FRAUD EVALUATIONS
+// ==========================================
+
+model fraud_evaluations {
+  id                String   @id @default(uuid())
+  user_id           String
+  user              users    @relation(fields: [user_id], references: [id])
+  
+  transaction_id    String?
+  
+  fraud_score       Int      // 0-100
+  risk_level        String   // MINIMAL, LOW, MEDIUM, HIGH, CRITICAL
+  confidence        Int      // 0-100
+  
+  decision          String   // APPROVE, APPROVE_WITH_2FA, REVIEW, HOLD, DECLINE, BLOCK_USER
+  decision_reason   String
+  
+  risk_factors      Json     // Array of risk factors
+  positive_factors  Json     // Array of positive factors
+  
+  model_version     String
+  model_scores      Json     // Individual model scores
+  
+  recommendations   Json     // Array of strings
+  context           Json     // Original context
+  
+  processing_time_ms Int
+  
+  evaluated_at      DateTime @default(now())
+  
+  @@index([user_id])
+  @@index([transaction_id])
+  @@index([fraud_score])
+  @@index([risk_level])
+  @@index([decision])
+  @@index([evaluated_at])
+}
+
+// ==========================================
+// ALERTS
+// ==========================================
+
+model alerts {
+  id                    String   @id @default(uuid())
+  
+  category              String   // SECURITY, FRAUD, COMPLIANCE, SYSTEM, BUSINESS, USER_ACTION
+  priority              String   // LOW, MEDIUM, HIGH, CRITICAL, EMERGENCY
+  
+  title                 String
+  message               String
+  
+  target_type           String   // USER, EMPLOYEE, ROLE, TEAM, ALL_ADMINS
+  target_id             String?
+  target_role           String?
+  
+  source                String
+  source_id             String?
+  
+  data                  Json?
+  action_url            String?
+  
+  channels              Json     // Array of channels
+  
+  status                String   @default("PENDING") // PENDING, SENT, DELIVERED, READ, ACTIONED, EXPIRED
+  
+  escalation_level      Int      @default(0)
+  escalate_after_minutes Int?
+  escalate_to           String?
+  
+  created_at            DateTime @default(now())
+  sent_at               DateTime?
+  read_at               DateTime?
+  read_by               String?
+  actioned_at           DateTime?
+  actioned_by           String?
+  action_taken          String?
+  expires_at            DateTime?
+  
+  @@index([category])
+  @@index([priority])
+  @@index([target_type, target_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+// ==========================================
+// ALERT WEBHOOKS
+// ==========================================
+
+model alert_webhooks {
+  id          String   @id @default(uuid())
+  name        String
+  url         String
+  secret      String?
+  
+  enabled     Boolean  @default(true)
+  categories  Json     // Array of categories to subscribe
+  priorities  Json     // Array of priorities to subscribe
+  
+  created_by  String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+  
+  @@index([enabled])
+}
+
+// ==========================================
+// SYSTEM SETTINGS
+// ==========================================
+
+model system_settings {
+  key         String   @id
+  value       Json
+  description String?
+  category    String?
+  updated_by  String?
+  updated_at  DateTime @default(now())
+  
+  @@index([category])
+}
+
+// ==========================================
+// SUPPORT TICKETS (para Trust Score)
+// ==========================================
+
+model support_tickets {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                users    @relation(fields: [user_id], references: [id])
+  
+  subject             String
+  description         String
+  category            String
+  priority            String   @default("MEDIUM")
+  
+  status              String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  
+  assigned_to         String?
+  
+  satisfaction_rating Int?     // 1-5
+  
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+  resolved_at         DateTime?
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([assigned_to])
+}
+
+// ==========================================
+// REFERRALS (para Trust Score)
+// ==========================================
+
+model referrals {
+  id            String   @id @default(uuid())
+  
+  referrer_id   String
+  referrer      users    @relation("ReferrerUser", fields: [referrer_id], references: [id])
+  
+  referred_id   String
+  referred      users    @relation("ReferredUser", fields: [referred_id], references: [id])
+  
+  code          String   @unique
+  
+  status        String   @default("PENDING") // PENDING, COMPLETED, EXPIRED, CANCELLED
+  
+  reward_amount Decimal? @db.Decimal(18, 2)
+  reward_paid   Boolean  @default(false)
+  
+  created_at    DateTime @default(now())
+  completed_at  DateTime?
+  
+  @@index([referrer_id])
+  @@index([referred_id])
+  @@index([status])
+}
+
+// ==========================================
+// USER SESSIONS (extendido)
+// ==========================================
+
+model user_sessions {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                users    @relation(fields: [user_id], references: [id])
+  
+  ip_address          String
+  user_agent          String?
+  device_fingerprint  String?
+  geo_location        Json?
+  
+  is_valid            Boolean  @default(true)
+  invalidated_reason  String?
+  
+  created_at          DateTime @default(now())
+  ended_at            DateTime?
+  expires_at          DateTime
+  last_activity_at    DateTime @default(now())
+  
+  @@index([user_id])
+  @@index([is_valid])
+  @@index([created_at])
+}
+
+// ==========================================
+// EMPLOYEES - Agregar campos
+// ==========================================
+
+// Agregar a model employees:
+// requires_dual_approval  Boolean  @default(false)
+// dual_approval_reason    String?
+// supervisor_id           String?
+// supervisor              employees? @relation("EmployeeSupervisor", fields: [supervisor_id], references: [id])
+// subordinates            employees[] @relation("EmployeeSupervisor")
+// anomalies               employee_anomalies[]
+// baseline                employee_baselines?
+// sessions                employee_sessions[]
+// notifications           employee_notifications[]
+
+// ==========================================
+// USERS - Agregar relaciones
+// ==========================================
+
+// Agregar a model users:
+// trust_scores            trust_scores[]
+// devices                 user_devices[]
+// risk_assessments        risk_assessments[]
+// behavior_profile        user_behavior_profiles?
+// analytics_events        user_analytics_events[]
+// fraud_evaluations       fraud_evaluations[]
+// support_tickets         support_tickets[]
+// referrals_made          referrals[] @relation("ReferrerUser")
+// referrals_received      referrals[] @relation("ReferredUser")
+// sessions                user_sessions[]
