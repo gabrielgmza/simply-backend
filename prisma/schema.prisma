@@ -1,0 +1,1772 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// EMPLOYEES (Backoffice)
+// ============================================
+model employees {
+  id                String          @id @default(uuid())
+  email             String          @unique
+  first_name        String
+  last_name         String
+  avatar_url        String?
+  password_hash     String
+  role              EmployeeRole
+  preferences       Json?
+  status            EmployeeStatus  @default(ACTIVE)
+  
+  // Seguridad de contraseña
+  password_changed_at   DateTime?
+  password_expires_at   DateTime?
+  force_password_change Boolean       @default(false)
+  failed_login_attempts Int           @default(0)
+  locked_until          DateTime?
+  
+  last_login_at     DateTime?
+  last_login_ip     String?
+  last_activity_at  DateTime?
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  
+  // Relaciones existentes
+  tickets           tickets[]
+  assigned_tickets  tickets[]       @relation("AssignedTickets")
+  aria_conversations aria_conversations[]
+  ticket_comments   ticket_comments[]
+  notifications     notifications[]
+  
+  // Nuevas relaciones - RBAC
+  employee_roles    employee_roles[]
+  
+  // Nuevas relaciones - Aprobaciones
+  approval_requests_made    approval_requests[] @relation("ApprovalMaker")
+  approval_decisions_made   approval_decisions[] @relation("ApprovalChecker")
+  
+  // Nuevas relaciones - Aria
+  aria_sessions     aria_sessions[]
+  
+  // Nuevas relaciones - Sesiones
+  employee_sessions employee_sessions[]
+  password_history  employee_password_history[]
+  
+  // Nuevas relaciones - Tickets
+  tickets_created   support_tickets[] @relation("TicketCreator")
+  tickets_assigned  support_tickets[] @relation("TicketAssigned")
+  
+  // Historial de cambios
+  changes_history   employee_changes_history[]
+  changes_made      employee_changes_history[] @relation("HistoryChangedBy")
+  
+  // Soft delete
+  is_deleted        Boolean           @default(false)
+  deleted_at        DateTime?
+  deleted_by        String?
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+enum EmployeeRole {
+  SUPER_ADMIN
+  ADMIN
+  COMPLIANCE
+  CUSTOMER_SERVICE
+  ANALYST
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// ============================================
+// USERS (App)
+// ============================================
+model users {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  phone           String?       @unique
+  password_hash   String?
+  
+  first_name      String
+  last_name       String
+  dni             String?       @unique
+  cuil            String?       @unique
+  birth_date      DateTime?
+  gender          String?
+  nationality     String?       @default("AR")
+  
+  address_street  String?
+  address_number  String?
+  address_floor   String?
+  address_apt     String?
+  address_city    String?
+  address_state   String?
+  address_zip     String?
+  address_country String?       @default("AR")
+  
+  status          UserStatus    @default(PENDING_VERIFICATION)
+  kyc_status      KYCStatus     @default(PENDING)
+  user_level      UserLevel     @default(PLATA)
+  
+  points_balance  Int           @default(0)
+  lifetime_points Int           @default(0)
+  
+  preferences     Json?
+  fcm_token       String?
+  
+  last_login_at   DateTime?
+  last_login_ip   String?
+  
+  // Soft delete - nunca se borra
+  is_deleted      Boolean       @default(false)
+  deleted_at      DateTime?
+  
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+  
+  account         accounts?
+  passkeys        passkeys[]
+  sessions        user_sessions[]
+  investments     investments[]
+  financings      financings[]
+  transactions    transactions[]
+  cards           cards[]
+  user_notifications user_notifications[]
+  contacts        contacts[]
+  kyc_documents   kyc_documents[]
+  risk_flags      risk_flags[]
+  otc_operations  otc_operations[]
+  fraud_alerts    fraud_alerts[]
+  compliance_reports compliance_reports[]
+  compliance_reviews compliance_reviews[]
+  support_tickets support_tickets[]
+  user_rewards    user_rewards[]
+  crypto_sessions crypto_onramp_sessions[]
+  pix_payments    pix_payments[]
+  changes_history user_changes_history[]
+  
+  @@index([email])
+  @@index([dni])
+  @@index([status])
+  @@index([user_level])
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+  CLOSED
+}
+
+enum KYCStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum UserLevel {
+  PLATA
+  ORO
+  BLACK
+  DIAMANTE
+}
+
+// ============================================
+// ACCOUNTS (CVU)
+// ============================================
+model accounts {
+  id              String        @id @default(uuid())
+  user_id         String        @unique
+  user            users         @relation(fields: [user_id], references: [id])
+  
+  cvu             String        @unique @db.VarChar(22)
+  alias           String?       @unique
+  alias_changes   Int           @default(0)
+  
+  balance         Decimal       @default(0) @db.Decimal(15, 2)
+  balance_usd     Decimal       @default(0) @db.Decimal(20, 8)
+  balance_usdt    Decimal       @default(0) @db.Decimal(20, 8)
+  balance_pending Decimal       @default(0) @db.Decimal(15, 2)
+  
+  daily_limit     Decimal       @default(500000) @db.Decimal(15, 2)
+  monthly_limit   Decimal       @default(5000000) @db.Decimal(15, 2)
+  
+  status          AccountStatus @default(ACTIVE)
+  
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+  
+  @@index([cvu])
+  @@index([alias])
+}
+
+enum AccountStatus {
+  ACTIVE
+  BLOCKED
+  CLOSED
+}
+
+// ============================================
+// PASSKEYS (FIDO2)
+// ============================================
+model passkeys {
+  id                  String    @id @default(uuid())
+  user_id             String
+  user                users     @relation(fields: [user_id], references: [id])
+  credential_id       String    @unique
+  public_key          String
+  counter             Int       @default(0)
+  transports          String[]
+  device_name         String?
+  device_type         String?
+  last_used_at        DateTime?
+  created_at          DateTime  @default(now())
+  
+  @@index([user_id])
+  @@index([credential_id])
+}
+
+// ============================================
+// USER SESSIONS
+// ============================================
+model user_sessions {
+  id              String    @id @default(uuid())
+  user_id         String
+  user            users     @relation(fields: [user_id], references: [id])
+  refresh_token   String    @unique
+  device_info     Json?
+  ip_address      String?
+  expires_at      DateTime
+  revoked_at      DateTime?
+  created_at      DateTime  @default(now())
+  
+  @@index([user_id])
+  @@index([refresh_token])
+}
+
+// ============================================
+// INVESTMENTS (FCI)
+// ============================================
+model investments {
+  id              String            @id @default(uuid())
+  user_id         String
+  user            users             @relation(fields: [user_id], references: [id])
+  
+  amount          Decimal           @db.Decimal(15, 2)
+  current_value   Decimal           @db.Decimal(15, 2)
+  returns_earned  Decimal           @default(0) @db.Decimal(15, 2)
+  
+  fci_type        String            @default("money_market")
+  annual_rate     Decimal           @default(22.08) @db.Decimal(5, 2)
+  
+  credit_used     Decimal           @default(0) @db.Decimal(15, 2)
+  credit_limit    Decimal           @db.Decimal(15, 2)
+  
+  status          InvestmentStatus  @default(ACTIVE)
+  
+  started_at      DateTime          @default(now())
+  liquidated_at   DateTime?
+  
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+  
+  returns         investment_returns[]
+  financings      financings[]
+  
+  @@index([user_id])
+  @@index([status])
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  LIQUIDATED
+  LIQUIDATED_BY_PENALTY
+}
+
+// ============================================
+// INVESTMENT RETURNS
+// ============================================
+model investment_returns {
+  id              String      @id @default(uuid())
+  investment_id   String
+  investment      investments @relation(fields: [investment_id], references: [id])
+  
+  base_amount     Decimal     @db.Decimal(15, 2)
+  rate_applied    Decimal     @db.Decimal(8, 6)
+  return_amount   Decimal     @db.Decimal(15, 2)
+  return_date     DateTime    @db.Date
+  
+  credited        Boolean     @default(false)
+  credited_at     DateTime?
+  
+  created_at      DateTime    @default(now())
+  
+  @@unique([investment_id, return_date])
+  @@index([investment_id])
+  @@index([return_date])
+}
+
+// ============================================
+// FINANCINGS
+// ============================================
+model financings {
+  id                  String            @id @default(uuid())
+  user_id             String
+  user                users             @relation(fields: [user_id], references: [id])
+  investment_id       String
+  investment          investments       @relation(fields: [investment_id], references: [id])
+  
+  amount              Decimal           @db.Decimal(15, 2)
+  total_amount        Decimal           @db.Decimal(15, 2)
+  remaining           Decimal           @db.Decimal(15, 2)
+  
+  installments        Int
+  installment_amount  Decimal           @db.Decimal(15, 2)
+  interest_rate       Decimal           @default(0) @db.Decimal(5, 2)
+  
+  destination_type    String?
+  destination_ref     String?
+  description         String?
+  
+  status              FinancingStatus   @default(ACTIVE)
+  
+  penalty_applied     Boolean           @default(false)
+  penalty_amount      Decimal?          @db.Decimal(15, 2)
+  
+  started_at          DateTime          @default(now())
+  next_due_date       DateTime
+  completed_at        DateTime?
+  
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+  
+  installment_records installments[]
+  
+  @@index([user_id])
+  @@index([investment_id])
+  @@index([status])
+}
+
+enum FinancingStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  LIQUIDATED
+}
+
+// ============================================
+// INSTALLMENTS
+// ============================================
+model installments {
+  id              String              @id @default(uuid())
+  financing_id    String
+  financing       financings          @relation(fields: [financing_id], references: [id])
+  
+  number          Int
+  amount          Decimal             @db.Decimal(15, 2)
+  penalty_amount  Decimal             @default(0) @db.Decimal(15, 2)
+  total_due       Decimal             @db.Decimal(15, 2)
+  
+  status          InstallmentStatus   @default(PENDING)
+  due_date        DateTime            @db.Date
+  paid_at         DateTime?
+  
+  created_at      DateTime            @default(now())
+  
+  @@unique([financing_id, number])
+  @@index([financing_id])
+  @@index([due_date])
+  @@index([status])
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  DROPPED
+}
+
+// ============================================
+// TRANSACTIONS
+// ============================================
+model transactions {
+  id                  String              @id @default(uuid())
+  user_id             String
+  user                users               @relation(fields: [user_id], references: [id])
+  account_id          String?
+  
+  type                TransactionType
+  amount              Decimal             @db.Decimal(15, 2)
+  fee                 Decimal             @default(0) @db.Decimal(15, 2)
+  total               Decimal             @db.Decimal(15, 2)
+  currency            String              @default("ARS")
+  
+  source_cvu          String?
+  destination_cvu     String?
+  destination_alias   String?
+  
+  motive              String?
+  reference           String?
+  description         String?
+  reference_id        String?
+  
+  status              TransactionStatus   @default(PENDING)
+  metadata            Json?
+  
+  created_at          DateTime            @default(now())
+  completed_at        DateTime?
+  
+  fraud_alerts        fraud_alerts[]
+  
+  @@index([user_id])
+  @@index([account_id])
+  @@index([type])
+  @@index([status])
+  @@index([created_at])
+}
+
+enum TransactionType {
+  TRANSFER_OUT
+  TRANSFER_IN
+  SERVICE_PAYMENT
+  MOBILE_RECHARGE
+  QR_PAYMENT
+  CARD_PAYMENT
+  INVESTMENT_DEPOSIT
+  INVESTMENT_WITHDRAWAL
+  INSTALLMENT_PAYMENT
+  FCI_RETURN
+  PENALTY_CHARGE
+  OTC_BUY
+  OTC_SELL
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+// ============================================
+// CARDS
+// ============================================
+model cards {
+  id                  String        @id @default(uuid())
+  user_id             String
+  user                users         @relation(fields: [user_id], references: [id])
+  
+  token               String        @unique
+  last_four           String
+  brand               String        @default("VISA")
+  type                CardType
+  
+  daily_limit         Decimal       @db.Decimal(15, 2)
+  monthly_limit       Decimal       @db.Decimal(15, 2)
+  
+  status              CardStatus    @default(ACTIVE)
+  expiry_month        Int
+  expiry_year         Int
+  
+  physical_requested  Boolean       @default(false)
+  physical_delivered  Boolean       @default(false)
+  
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+  
+  @@index([user_id])
+  @@index([token])
+}
+
+enum CardType {
+  VIRTUAL
+  PHYSICAL
+}
+
+enum CardStatus {
+  ACTIVE
+  BLOCKED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// USER NOTIFICATIONS
+// ============================================
+model user_notifications {
+  id          String              @id @default(uuid())
+  user_id     String
+  user        users               @relation(fields: [user_id], references: [id])
+  type        UserNotificationType
+  title       String
+  body        String
+  data        Json?
+  read        Boolean             @default(false)
+  read_at     DateTime?
+  created_at  DateTime            @default(now())
+  
+  @@index([user_id, read])
+  @@index([created_at])
+}
+
+enum UserNotificationType {
+  TRANSACTION
+  INVESTMENT
+  FINANCING
+  SECURITY
+  PROMOTION
+  GENERAL
+}
+
+// ============================================
+// CONTACTS
+// ============================================
+model contacts {
+  id          String    @id @default(uuid())
+  user_id     String
+  user        users     @relation(fields: [user_id], references: [id])
+  alias       String?
+  cvu         String
+  name        String
+  is_favorite Boolean   @default(false)
+  last_used   DateTime?
+  created_at  DateTime  @default(now())
+  
+  @@unique([user_id, cvu])
+  @@index([user_id])
+}
+
+// ============================================
+// KYC DOCUMENTS
+// ============================================
+model kyc_documents {
+  id                String        @id @default(uuid())
+  user_id           String
+  user              users         @relation(fields: [user_id], references: [id])
+  type              KYCDocType
+  status            KYCDocStatus  @default(PENDING)
+  document_url      String?
+  selfie_url        String?
+  verification_id   String?
+  verification_data Json?
+  rejection_reason  String?
+  created_at        DateTime      @default(now())
+  verified_at       DateTime?
+  
+  @@index([user_id])
+  @@index([status])
+}
+
+enum KYCDocType {
+  DNI_FRONT
+  DNI_BACK
+  SELFIE
+  PROOF_OF_ADDRESS
+}
+
+enum KYCDocStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// LANDING (Leads, Contact, etc.)
+// ============================================
+model leads {
+  id                  String    @id @default(uuid())
+  nombre              String
+  apellido            String
+  email               String    @unique
+  telefono            String?
+  terminos_aceptados  Boolean   @default(false)
+  source              String?
+  utm_source          String?
+  utm_medium          String?
+  utm_campaign        String?
+  status              String    @default("new")
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+}
+
+model contact_messages {
+  id         String   @id @default(uuid())
+  nombre     String
+  email      String
+  asunto     String?
+  mensaje    String
+  status     String   @default("new")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model calculator_simulations {
+  id                      String   @id @default(uuid())
+  monto_inversion         Decimal  @db.Decimal(15, 2)
+  plazo_meses             Int
+  nivel_cliente           String   @default("plata")
+  rendimiento_total       Decimal? @db.Decimal(15, 2)
+  monto_final             Decimal? @db.Decimal(15, 2)
+  financiacion_disponible Decimal? @db.Decimal(15, 2)
+  created_at              DateTime @default(now())
+}
+
+model newsletter_subscribers {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  status     String   @default("active")
+  source     String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+// ============================================
+// BACKOFFICE
+// ============================================
+model tickets {
+  id              String          @id @default(uuid())
+  title           String
+  description     String
+  category        TicketCategory
+  priority        TicketPriority  @default(MEDIUM)
+  status          TicketStatus    @default(OPEN)
+  created_by_id   String
+  created_by      employees       @relation(fields: [created_by_id], references: [id])
+  assigned_to_id  String?
+  assigned_to     employees?      @relation("AssignedTickets", fields: [assigned_to_id], references: [id])
+  tags            String[]
+  attachments     Json?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  resolved_at     DateTime?
+  comments        ticket_comments[]
+  
+  @@index([status])
+  @@index([priority])
+  @@index([created_by_id])
+  @@index([assigned_to_id])
+}
+
+enum TicketCategory {
+  BUG
+  FEATURE_REQUEST
+  QUESTION
+  TASK
+  INCIDENT
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+model ticket_comments {
+  id          String    @id @default(uuid())
+  ticket_id   String
+  ticket      tickets   @relation(fields: [ticket_id], references: [id])
+  employee_id String
+  employee    employees @relation(fields: [employee_id], references: [id])
+  comment     String
+  is_internal Boolean   @default(false)
+  created_at  DateTime  @default(now())
+  
+  @@index([ticket_id])
+}
+
+model aria_conversations {
+  id          String    @id @default(uuid())
+  employee_id String
+  employee    employees @relation(fields: [employee_id], references: [id])
+  title       String
+  messages    Json
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  
+  @@index([employee_id])
+}
+
+model notifications {
+  id          String    @id @default(uuid())
+  employee_id String
+  type        String
+  title       String
+  message     String
+  link        String?
+  metadata    Json      @default("{}")
+  is_read     Boolean   @default(false)
+  read_at     DateTime?
+  created_at  DateTime  @default(now())
+  employee    employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  
+  @@index([employee_id])
+  @@index([is_read])
+}
+
+// ============================================
+// SYSTEM SETTINGS (Variables del Sistema)
+// ============================================
+model system_settings {
+  id              String    @id @default(uuid())
+  key             String    @unique
+  value           String
+  value_type      String    @default("string") // string, number, boolean, json
+  category        String    // rates, limits, fees, features
+  description     String?
+  
+  // Control de cambios
+  updated_by_id   String?
+  previous_value  String?
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([category])
+  @@index([key])
+}
+
+// ============================================
+// SYSTEM SETTINGS HISTORY (Historial de cambios)
+// ============================================
+model system_settings_history {
+  id              String    @id @default(uuid())
+  setting_key     String
+  old_value       String?
+  new_value       String
+  changed_by_id   String
+  reason          String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([setting_key])
+  @@index([changed_by_id])
+  @@index([created_at])
+}
+
+// ============================================
+// AUDIT LOGS (Registro de Acciones)
+// ============================================
+model audit_logs {
+  id              String    @id @default(uuid())
+  
+  // Quién
+  actor_type      String    // employee, user, system
+  actor_id        String?
+  actor_email     String?
+  actor_role      String?
+  
+  // Qué
+  action          String    // create, update, delete, login, logout, etc.
+  resource        String    // users, investments, financings, settings, etc.
+  resource_id     String?
+  
+  // Detalles
+  description     String
+  old_data        Json?
+  new_data        Json?
+  metadata        Json?
+  
+  // Contexto
+  ip_address      String?
+  user_agent      String?
+  
+  // Resultado
+  status          String    @default("success") // success, failed, blocked
+  error_message   String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([actor_type, actor_id])
+  @@index([action])
+  @@index([resource, resource_id])
+  @@index([created_at])
+}
+
+// ============================================
+// INTERNAL ACCOUNTS (Cajas Internas)
+// ============================================
+model internal_accounts {
+  id              String    @id @default(uuid())
+  
+  name            String    @unique // caja_ars, caja_usd, caja_usdt, etc.
+  type            String    // main, fci, fees, penalties, otc
+  currency        String    // ARS, USD, USDT
+  balance         Decimal   @default(0) @db.Decimal(20, 8)
+  
+  // Control
+  status          String    @default("active") // active, blocked, closed
+  blocked_reason  String?
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  movements       internal_movements[]
+  
+  @@index([type])
+  @@index([currency])
+  @@index([name])
+}
+
+// ============================================
+// INTERNAL MOVEMENTS (Movimientos Internos)
+// ============================================
+model internal_movements {
+  id                  String            @id @default(uuid())
+  
+  account_id          String
+  internal_accounts   internal_accounts @relation(fields: [account_id], references: [id])
+  
+  type                String            // DEPOSIT, WITHDRAWAL, TRANSFER, FEE, ADJUSTMENT, RETURN, PENALTY
+  amount              Decimal           @db.Decimal(20, 8)
+  balance_before      Decimal           @db.Decimal(20, 8)
+  balance_after       Decimal           @db.Decimal(20, 8)
+  
+  // Descripción y referencia
+  description         String?
+  reference_id        String?
+  
+  // Usuario relacionado (opcional)
+  user_id             String?
+  
+  // Empleado que realizó la operación
+  employee_id         String?
+  
+  created_at          DateTime          @default(now())
+  
+  @@index([account_id])
+  @@index([type])
+  @@index([created_at])
+  @@index([reference_id])
+}
+
+// ============================================
+// RISK FLAGS (Alertas de Riesgo)
+// ============================================
+model risk_flags {
+  id              String    @id @default(uuid())
+  
+  user_id         String
+  users           users     @relation(fields: [user_id], references: [id])
+  
+  type            String    // high_volume, unusual_pattern, suspicious_ip, manual
+  severity        String    // low, medium, high, critical
+  status          String    @default("active") // active, resolved, dismissed
+  
+  description     String
+  details         Json?
+  
+  // Acciones
+  action_taken    String?   // none, limited, blocked, reviewed
+  resolved_by_id  String?
+  resolved_at     DateTime?
+  resolution_note String?
+  
+  created_by      String?
+  created_at      DateTime  @default(now())
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([severity])
+  @@index([created_at])
+}
+
+// ============================================
+// OTC OPERATIONS (Operaciones OTC)
+// ============================================
+model otc_operations {
+  id                  String    @id @default(uuid())
+  
+  user_id             String
+  users               users     @relation(fields: [user_id], references: [id])
+  
+  type                String    // BUY, SELL
+  asset               String    // USD, USDT, BTC, ETH
+  amount              Decimal   @db.Decimal(20, 8)
+  rate                Decimal   @db.Decimal(20, 8)
+  total_ars           Decimal   @db.Decimal(20, 2)
+  fee                 Decimal   @db.Decimal(20, 2)
+  
+  status              String    @default("PENDING") // PENDING, APPROVED, EXECUTED, CANCELLED, REJECTED
+  
+  // Aprobación
+  created_by          String?
+  approved_by         String?
+  approved_at         DateTime?
+  
+  // Ejecución
+  executed_by         String?
+  executed_at         DateTime?
+  
+  // Rechazo/Cancelación
+  rejection_reason    String?
+  rejected_by         String?
+  rejected_at         DateTime?
+  cancellation_reason String?
+  cancelled_at        DateTime?
+  
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([type])
+  @@index([created_at])
+}
+
+// ============================================
+// FRAUD ALERTS (Alertas de Fraude)
+// ============================================
+model fraud_alerts {
+  id                String    @id @default(uuid())
+  
+  user_id           String
+  users             users     @relation(fields: [user_id], references: [id])
+  
+  transaction_id    String?
+  transactions      transactions? @relation(fields: [transaction_id], references: [id])
+  
+  risk_score        Int       // 0-100
+  risk_level        String    // LOW, MEDIUM, HIGH, CRITICAL
+  factors           Json      // Array of risk factors
+  
+  status            String    @default("PENDING") // PENDING, REVIEWING, RESOLVED, ESCALATED, FALSE_POSITIVE
+  auto_blocked      Boolean   @default(false)
+  
+  // Revisión
+  reviewed_by       String?
+  reviewed_at       DateTime?
+  notes             String?
+  
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([risk_level])
+  @@index([created_at])
+}
+
+// ============================================
+// BLACKLISTED IPS (IPs Bloqueadas)
+// ============================================
+model blacklisted_ips {
+  id          String    @id @default(uuid())
+  ip          String    @unique
+  reason      String
+  added_by    String
+  
+  created_at  DateTime  @default(now())
+  
+  @@index([ip])
+}
+
+// ============================================
+// COMPLIANCE REPORTS (Reportes UIF)
+// ============================================
+model compliance_reports {
+  id                  String    @id @default(uuid())
+  
+  type                String    // ROS, ROE, PERIODIC, THRESHOLD
+  user_id             String
+  users               users     @relation(fields: [user_id], references: [id])
+  
+  status              String    @default("DRAFT") // DRAFT, PENDING_REVIEW, APPROVED, SUBMITTED, REJECTED
+  
+  content             Json      // Contenido completo del reporte
+  transaction_ids     String[]  // IDs de transacciones involucradas
+  amount              Decimal   @db.Decimal(20, 2)
+  
+  // Aprobación
+  created_by          String
+  approved_by         String?
+  approved_at         DateTime?
+  notes               String?
+  
+  // Envío
+  submitted_by        String?
+  submitted_at        DateTime?
+  external_reference  String?   // Referencia UIF
+  
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([type])
+  @@index([created_at])
+}
+
+// ============================================
+// COMPLIANCE REVIEWS (Revisiones de Compliance)
+// ============================================
+model compliance_reviews {
+  id              String    @id @default(uuid())
+  
+  user_id         String
+  users           users     @relation(fields: [user_id], references: [id])
+  
+  reason          String
+  status          String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+  due_date        DateTime
+  
+  // Asignación
+  scheduled_by    String
+  assigned_to     String?
+  
+  // Resultado
+  completed_by    String?
+  completed_at    DateTime?
+  result          String?   // APPROVED, REQUIRES_ACTION, BLOCKED
+  findings        Json?
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([due_date])
+}
+
+// ============================================
+// RBAC/ABAC - SISTEMA DE PERMISOS GRANULAR
+// ============================================
+
+// Definición de permisos
+model permissions {
+  id              String    @id @default(uuid())
+  slug            String    @unique  // users:read, investments:authorize, etc.
+  resource        String    // users, investments, financings, etc.
+  action          String    // view, operate, authorize, audit
+  description     String?
+  is_sensitive    Boolean   @default(false)  // Requiere doble autorización
+  
+  created_at      DateTime  @default(now())
+  
+  role_permissions role_permissions[]
+  
+  @@index([resource])
+  @@index([action])
+}
+
+// Roles con jerarquía
+model roles {
+  id              String    @id @default(uuid())
+  slug            String    @unique  // super_admin, admin, compliance, etc.
+  name            String
+  description     String?
+  parent_role_id  String?
+  parent_role     roles?    @relation("RoleHierarchy", fields: [parent_role_id], references: [id])
+  child_roles     roles[]   @relation("RoleHierarchy")
+  priority        Int       @default(0)  // Mayor = más privilegios
+  is_system       Boolean   @default(false)  // No se puede eliminar
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  role_permissions  role_permissions[]
+  employee_roles    employee_roles[]
+  approval_steps    approval_steps[]
+  
+  @@index([slug])
+  @@index([priority])
+}
+
+// Asignación permiso-rol con condiciones ABAC
+model role_permissions {
+  id              String    @id @default(uuid())
+  role_id         String
+  role            roles     @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission_id   String
+  permission      permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  
+  effect          String    @default("allow")  // allow, deny
+  conditions      Json?     // ABAC: {"time_range": "09:00-18:00", "ip_whitelist": [], "max_amount": 100000}
+  priority        Int       @default(0)
+  
+  granted_by      String?
+  granted_at      DateTime  @default(now())
+  expires_at      DateTime?
+  
+  @@unique([role_id, permission_id])
+  @@index([role_id])
+  @@index([permission_id])
+}
+
+// Asignación empleado-rol
+model employee_roles {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employees       employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  role_id         String
+  role            roles     @relation(fields: [role_id], references: [id])
+  
+  granted_by      String?
+  granted_at      DateTime  @default(now())
+  expires_at      DateTime?
+  is_active       Boolean   @default(true)
+  
+  @@unique([employee_id, role_id])
+  @@index([employee_id])
+  @@index([role_id])
+}
+
+// Historial de cambios de permisos
+model permission_audit {
+  id              String    @id @default(uuid())
+  
+  target_type     String    // role, employee, role_permission
+  target_id       String
+  action          String    // grant, revoke, modify
+  
+  old_value       Json?
+  new_value       Json?
+  
+  changed_by      String
+  reason          String?
+  ip_address      String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([target_type, target_id])
+  @@index([changed_by])
+  @@index([created_at])
+}
+
+// ============================================
+// DOBLE AUTORIZACIÓN (MAKER-CHECKER)
+// ============================================
+
+model approval_requests {
+  id                  String    @id @default(uuid())
+  
+  resource_type       String    // user_block, limit_change, investment_liquidate, etc.
+  resource_id         String
+  operation_type      String    // create, update, delete, execute
+  
+  maker_id            String    // Quien inicia
+  maker_employees     employees @relation("ApprovalMaker", fields: [maker_id], references: [id])
+  
+  payload             Json      // Datos de la operación
+  amount              Decimal?  @db.Decimal(20, 2)  // Para threshold routing
+  
+  status              String    @default("PENDING")  // PENDING, APPROVED, REJECTED, EXPIRED, EXECUTED
+  
+  requires_approvals  Int       @default(1)
+  current_approvals   Int       @default(0)
+  
+  expires_at          DateTime
+  executed_at         DateTime?
+  
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  approval_steps      approval_steps[]
+  approval_decisions  approval_decisions[]
+  
+  @@index([maker_id])
+  @@index([status])
+  @@index([resource_type])
+  @@index([created_at])
+}
+
+model approval_steps {
+  id                  String    @id @default(uuid())
+  approval_request_id String
+  approval_request    approval_requests @relation(fields: [approval_request_id], references: [id], onDelete: Cascade)
+  
+  step_order          Int
+  approver_role_id    String
+  approver_role       roles     @relation(fields: [approver_role_id], references: [id])
+  
+  approval_type       String    @default("ANY_ONE")  // ANY_ONE, ALL, MAJORITY
+  min_approvers       Int       @default(1)
+  
+  status              String    @default("WAITING")  // WAITING, PENDING, COMPLETED, SKIPPED
+  
+  created_at          DateTime  @default(now())
+  
+  @@index([approval_request_id])
+}
+
+model approval_decisions {
+  id                  String    @id @default(uuid())
+  approval_request_id String
+  approval_request    approval_requests @relation(fields: [approval_request_id], references: [id], onDelete: Cascade)
+  
+  checker_id          String
+  checker_employees   employees @relation("ApprovalChecker", fields: [checker_id], references: [id])
+  
+  decision            String    // APPROVE, REJECT, REQUEST_CHANGES
+  comments            String?
+  
+  ip_address          String?
+  user_agent          String?
+  
+  decided_at          DateTime  @default(now())
+  
+  @@index([approval_request_id])
+  @@index([checker_id])
+}
+
+// ============================================
+// AI AGENT - ARIA
+// ============================================
+
+// Sesiones de conversación con Aria
+model aria_sessions {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employees       employees @relation(fields: [employee_id], references: [id])
+  
+  context         Json?     // Contexto de la conversación
+  status          String    @default("active")  // active, closed, escalated
+  
+  started_at      DateTime  @default(now())
+  last_activity   DateTime  @default(now())
+  closed_at       DateTime?
+  
+  messages        aria_messages[]
+  decisions       aria_decisions[]
+  
+  @@index([employee_id])
+  @@index([status])
+}
+
+// Mensajes de la conversación
+model aria_messages {
+  id              String    @id @default(uuid())
+  session_id      String
+  session         aria_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  
+  role            String    // user, assistant, system, tool
+  content         String
+  
+  tool_calls      Json?     // Tools que Aria quiere ejecutar
+  tool_results    Json?     // Resultados de tools
+  
+  tokens_used     Int?
+  model_id        String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([session_id])
+  @@index([created_at])
+}
+
+// Decisiones y acciones de Aria
+model aria_decisions {
+  id                  String    @id @default(uuid())
+  session_id          String?
+  session             aria_sessions? @relation(fields: [session_id], references: [id])
+  
+  // Contexto de la decisión
+  request_type        String    // ticket_response, user_action, alert_review, etc.
+  request_context     Json      // Contexto completo del request
+  
+  // Razonamiento
+  chain_of_thought    String?   // Razonamiento de Aria
+  confidence_score    Decimal   @db.Decimal(5, 4)  // 0.0000 - 1.0000
+  
+  // Evaluación de seguridad
+  safety_evaluation   Json      // Resultado del SafetyGuardrails
+  risk_level          String    // low, medium, high, critical
+  
+  // Tool ejecutado
+  tool_name           String?
+  tool_input          Json?
+  tool_output         Json?
+  
+  // Estado antes/después para rollback
+  state_before        Json?
+  state_after         Json?
+  affected_resource   String?   // users:uuid, investments:uuid, etc.
+  dollar_amount       Decimal?  @db.Decimal(20, 2)
+  
+  // Status
+  status              String    @default("pending")  // pending, executed, rejected, escalated, rolled_back
+  
+  // Rollback
+  rollback_token      String?   @unique
+  rollback_expires_at DateTime?
+  rolled_back_at      DateTime?
+  rolled_back_by      String?
+  rollback_reason     String?
+  
+  // Human escalation
+  escalated_to        String?
+  escalation_reason   String?
+  human_decision      String?   // approved, rejected, modified
+  human_decided_at    DateTime?
+  
+  executed_by         String?   // aria_auto, employee_id
+  executed_at         DateTime?
+  created_at          DateTime  @default(now())
+  
+  @@index([session_id])
+  @@index([status])
+  @@index([risk_level])
+  @@index([rollback_token])
+  @@index([created_at])
+}
+
+// Configuración de herramientas de Aria
+model aria_tools {
+  id                  String    @id @default(uuid())
+  name                String    @unique  // block_user, respond_ticket, adjust_limit, etc.
+  description         String
+  
+  // Restricciones
+  min_confidence      Decimal   @db.Decimal(5, 4)  // Confianza mínima para ejecutar
+  max_dollar_amount   Decimal?  @db.Decimal(20, 2)
+  requires_approval   Boolean   @default(false)
+  
+  // Roles que pueden usar esta tool
+  allowed_roles       String[]  // ['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE']
+  
+  // Schema de input/output
+  input_schema        Json
+  output_schema       Json?
+  
+  is_active           Boolean   @default(true)
+  
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  @@index([name])
+  @@index([is_active])
+}
+
+// Rate limits y circuit breaker para Aria
+model aria_rate_limits {
+  id                  String    @id @default(uuid())
+  employee_id         String    @unique
+  
+  actions_this_minute Int       @default(0)
+  actions_this_hour   Int       @default(0)
+  dollar_volume_hour  Decimal   @default(0) @db.Decimal(20, 2)
+  
+  consecutive_errors  Int       @default(0)
+  circuit_open        Boolean   @default(false)
+  circuit_opens_at    DateTime?
+  
+  last_action_at      DateTime?
+  reset_minute_at     DateTime  @default(now())
+  reset_hour_at       DateTime  @default(now())
+  
+  @@index([employee_id])
+}
+
+// ============================================
+// SESIONES DE EMPLEADOS (Seguridad)
+// ============================================
+
+model employee_sessions {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employees       employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  
+  refresh_token   String    @unique
+  token_family    String    // Para detectar token reuse
+  
+  device_info     Json?     // fingerprint, user_agent, etc.
+  ip_address      String?
+  
+  is_active       Boolean   @default(true)
+  
+  created_at      DateTime  @default(now())
+  last_activity   DateTime  @default(now())
+  expires_at      DateTime
+  revoked_at      DateTime?
+  revoke_reason   String?
+  
+  @@index([employee_id])
+  @@index([refresh_token])
+  @@index([token_family])
+}
+
+// Historial de contraseñas
+model employee_password_history {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employees       employees @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  
+  password_hash   String
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([employee_id])
+}
+
+// ============================================
+// TICKETS
+// ============================================
+
+model support_tickets {
+  id                  String    @id @default(uuid())
+  
+  // Usuario o empleado que crea
+  user_id             String?
+  users               users?    @relation(fields: [user_id], references: [id])
+  employee_id         String?
+  creator_employees   employees? @relation("TicketCreator", fields: [employee_id], references: [id])
+  
+  // Contenido
+  subject             String
+  description         String
+  category            String?   // billing, technical, account, fraud, etc.
+  
+  // Status y prioridad
+  status              String    @default("open")  // open, in_progress, waiting_customer, resolved, closed
+  priority            String    @default("medium")  // low, medium, high, urgent
+  
+  // AI Classification
+  ai_category         String?
+  ai_intent           String?
+  ai_sentiment        String?   // positive, neutral, negative
+  ai_urgency_score    Decimal?  @db.Decimal(3, 2)
+  ai_auto_resolvable  Boolean   @default(false)
+  ai_suggested_response String?
+  
+  // Asignación
+  assigned_to         String?
+  assigned_employees  employees? @relation("TicketAssigned", fields: [assigned_to], references: [id])
+  assigned_team       String?
+  
+  // SLA
+  first_response_due  DateTime?
+  resolution_due      DateTime?
+  first_responded_at  DateTime?
+  resolved_at         DateTime?
+  sla_breached        Boolean   @default(false)
+  
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  messages            ticket_messages[]
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([priority])
+  @@index([assigned_to])
+  @@index([created_at])
+}
+
+model ticket_messages {
+  id              String    @id @default(uuid())
+  ticket_id       String
+  ticket          support_tickets @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  
+  sender_type     String    // user, employee, aria
+  sender_id       String?
+  
+  content         String
+  is_internal     Boolean   @default(false)  // Nota interna
+  
+  // Si fue generado por Aria
+  aria_generated  Boolean   @default(false)
+  aria_decision_id String?
+  aria_confidence Decimal?  @db.Decimal(5, 4)
+  
+  attachments     Json?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([ticket_id])
+  @@index([sender_type])
+}
+
+// ============================================
+// PROVEEDORES EXTERNOS
+// ============================================
+
+model providers {
+  id              String    @id @default(uuid())
+  slug            String    @unique  // bind, didit, stripe, etc.
+  name            String
+  category        String    // banking, kyc, payments, etc.
+  
+  base_url        String
+  credentials     Json      // Encriptadas
+  settings        Json?
+  
+  webhook_url     String?
+  webhook_secret  String?
+  
+  status          String    @default("inactive")  // active, inactive, error
+  
+  last_health_check DateTime?
+  last_error      String?
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  health_logs     provider_health_logs[]
+  webhook_events  provider_webhook_events[]
+  api_logs        provider_api_logs[]
+  
+  @@index([slug])
+  @@index([status])
+  @@index([category])
+}
+
+model provider_health_logs {
+  id              String    @id @default(uuid())
+  provider_id     String
+  provider        providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  
+  status          String    // healthy, unhealthy, error
+  latency_ms      Int?
+  error           String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([provider_id])
+  @@index([created_at])
+}
+
+model provider_webhook_events {
+  id              String    @id @default(uuid())
+  provider_id     String
+  provider        providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  
+  event_type      String
+  payload         Json
+  signature       String?
+  
+  status          String    @default("received")  // received, processed, failed
+  processed_at    DateTime?
+  result          Json?
+  error           String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([provider_id])
+  @@index([event_type])
+  @@index([status])
+  @@index([created_at])
+}
+
+model provider_api_logs {
+  id              String    @id @default(uuid())
+  provider_id     String
+  provider        providers @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  
+  endpoint        String
+  method          String
+  status_code     Int
+  latency_ms      Int
+  success         Boolean
+  error           String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([provider_id])
+  @@index([created_at])
+  @@index([success])
+}
+
+// ============================================
+// USER REWARDS (IFRS 15 Compliant)
+// ============================================
+model user_rewards {
+  id              String    @id @default(uuid())
+  user_id         String
+  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  type            RewardType
+  points          Int       @default(0)
+  amount          Decimal   @default(0) @db.Decimal(18, 2)
+  status          RewardStatus @default(PENDING)
+  
+  source_type     String?   // INVESTMENT, REFERRAL, MANUAL, etc.
+  source_id       String?
+  description     String?
+  
+  expires_at      DateTime?
+  redeemed_at     DateTime?
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+  @@index([type])
+  @@index([expires_at])
+}
+
+enum RewardType {
+  CASHBACK
+  POINTS
+  BONUS_RATE
+  FEE_WAIVER
+  REFERRAL
+}
+
+enum RewardStatus {
+  PENDING
+  EARNED
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// CRYPTO ONRAMP (Stripe)
+// ============================================
+model crypto_onramp_sessions {
+  id                    String    @id @default(uuid())
+  user_id               String
+  users                 users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  stripe_session_id     String    @unique
+  wallet_address        String
+  destination_currency  String
+  destination_network   String
+  destination_amount    Decimal?  @db.Decimal(28, 18)
+  source_amount         Decimal?  @db.Decimal(18, 2)
+  source_currency       String?
+  
+  status                String    @default("initialized")
+  transaction_hash      String?
+  
+  metadata              Json?
+  completed_at          DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([stripe_session_id])
+  @@index([status])
+}
+
+// ============================================
+// PIX PAYMENTS (Brasil)
+// ============================================
+model pix_payments {
+  id                        String    @id @default(uuid())
+  user_id                   String
+  users                     users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  stripe_payment_intent_id  String    @unique
+  amount                    Decimal   @db.Decimal(18, 2)
+  currency                  String    @default("BRL")
+  status                    String    @default("pending")
+  
+  qr_code_url               String?
+  qr_code_data              String?
+  expires_at                DateTime?
+  paid_at                   DateTime?
+  
+  description               String?
+  metadata                  Json?
+  
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @updatedAt
+  
+  @@index([user_id])
+  @@index([status])
+}
+
+// ============================================
+// COTIZACIONES USD (BCRA)
+// ============================================
+model cotizaciones_usd {
+  id          String    @id @default(uuid())
+  fecha       DateTime  @unique @db.Date
+  compra      Decimal   @db.Decimal(10, 4)
+  venta       Decimal   @db.Decimal(10, 4)
+  source      String    @default("BCRA")
+  created_at  DateTime  @default(now())
+  
+  @@index([fecha])
+}
+
+// ============================================
+// CENTRAL DE DEUDORES (BCRA)
+// ============================================
+model deudor_consultas {
+  id                  String    @id @default(uuid())
+  cuit                String
+  denominacion        String?
+  peor_situacion      Int
+  monto_total         Decimal   @db.Decimal(18, 2)
+  cantidad_entidades  Int
+  resultado           Json?
+  consulted_at        DateTime  @default(now())
+  
+  @@index([cuit])
+  @@index([consulted_at])
+}
+
+// ============================================
+// HISTORIAL DE CAMBIOS DE USUARIOS
+// ============================================
+model user_changes_history {
+  id              String    @id @default(uuid())
+  user_id         String
+  users           users     @relation(fields: [user_id], references: [id])
+  
+  field_name      String
+  old_value       String?
+  new_value       String?
+  
+  changed_by_type String    // 'user' | 'employee' | 'system'
+  changed_by_id   String?
+  
+  reason          String?
+  ip_address      String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([user_id])
+  @@index([field_name])
+  @@index([created_at])
+}
+
+// ============================================
+// HISTORIAL DE CAMBIOS DE EMPLEADOS  
+// ============================================
+model employee_changes_history {
+  id              String    @id @default(uuid())
+  employee_id     String
+  employees       employees @relation(fields: [employee_id], references: [id])
+  
+  action          String    // 'CREATED' | 'UPDATED' | 'BLOCKED' | 'UNBLOCKED' | 'DELETED' | 'ROLE_CHANGED'
+  field_name      String?
+  old_value       String?
+  new_value       String?
+  
+  changed_by_id   String
+  changed_by      employees @relation("HistoryChangedBy", fields: [changed_by_id], references: [id])
+  
+  reason          String?
+  ip_address      String?
+  
+  created_at      DateTime  @default(now())
+  
+  @@index([employee_id])
+  @@index([action])
+  @@index([created_at])
+}
